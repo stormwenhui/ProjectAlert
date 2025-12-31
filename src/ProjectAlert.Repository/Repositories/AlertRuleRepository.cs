@@ -2,6 +2,7 @@ using Dapper;
 using ProjectAlert.Domain.Entities;
 using ProjectAlert.Domain.Enums;
 using ProjectAlert.Domain.Interfaces;
+using ProjectAlert.Shared;
 
 namespace ProjectAlert.Repository.Repositories;
 
@@ -28,6 +29,63 @@ public class AlertRuleRepository : IAlertRuleRepository
     {
         using var conn = _context.CreateConnection();
         return await conn.QueryAsync<AlertRule>("SELECT * FROM alert_rules ORDER BY id");
+    }
+
+    public async Task<PagedResult<AlertRule>> SearchAsync(string? keyword, SystemCategory? category, SourceType? sourceType, AlertLevel? alertLevel, int page, int pageSize)
+    {
+        using var conn = _context.CreateConnection();
+
+        var conditions = new List<string>();
+        var parameters = new DynamicParameters();
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            conditions.Add("name LIKE @Keyword");
+            parameters.Add("Keyword", $"%{keyword}%");
+        }
+
+        if (category.HasValue)
+        {
+            conditions.Add("category = @Category");
+            parameters.Add("Category", (int)category.Value);
+        }
+
+        if (sourceType.HasValue)
+        {
+            conditions.Add("source_type = @SourceType");
+            parameters.Add("SourceType", (int)sourceType.Value);
+        }
+
+        if (alertLevel.HasValue)
+        {
+            conditions.Add("alert_level = @AlertLevel");
+            parameters.Add("AlertLevel", (int)alertLevel.Value);
+        }
+
+        var whereClause = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
+
+        var countSql = $"SELECT COUNT(*) FROM alert_rules {whereClause}";
+        var total = await conn.ExecuteScalarAsync<int>(countSql, parameters);
+
+        parameters.Add("PageSize", pageSize);
+        parameters.Add("Offset", (page - 1) * pageSize);
+
+        var dataSql = $"""
+            SELECT * FROM alert_rules
+            {whereClause}
+            ORDER BY id DESC
+            LIMIT @PageSize OFFSET @Offset
+            """;
+
+        var items = await conn.QueryAsync<AlertRule>(dataSql, parameters);
+
+        return new PagedResult<AlertRule>
+        {
+            Items = items,
+            Total = total,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     public async Task<IEnumerable<AlertRule>> GetEnabledAsync()

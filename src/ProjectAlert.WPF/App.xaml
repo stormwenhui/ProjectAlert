@@ -27,6 +27,9 @@
             <!-- 字符串转反向可见性转换器 -->
             <converters:String2InverseVisibilityConverter x:Key="String2InverseVisibilityConverter"/>
 
+            <!-- 可空枚举显示转换器 -->
+            <converters:NullableEnumDisplayConverter x:Key="NullableEnumDisplayConverter"/>
+
             <!-- 浮窗内容 DataTemplate -->
             <DataTemplate DataType="{x:Type vm:FloatingViewModel}">
                 <controls:AlertWidgetContent/>

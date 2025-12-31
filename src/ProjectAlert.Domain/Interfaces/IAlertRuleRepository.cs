@@ -1,5 +1,6 @@
 using ProjectAlert.Domain.Entities;
 using ProjectAlert.Domain.Enums;
+using ProjectAlert.Shared;
 
 namespace ProjectAlert.Domain.Interfaces;
 
@@ -8,6 +9,18 @@ namespace ProjectAlert.Domain.Interfaces;
 /// </summary>
 public interface IAlertRuleRepository : IRepository<AlertRule>
 {
+    /// <summary>
+    /// 分页搜索预警规则
+    /// </summary>
+    /// <param name="keyword">搜索关键词（名称）</param>
+    /// <param name="category">系统分类</param>
+    /// <param name="sourceType">数据源类型</param>
+    /// <param name="alertLevel">预警级别</param>
+    /// <param name="page">页码（从1开始）</param>
+    /// <param name="pageSize">每页大小</param>
+    /// <returns>分页结果</returns>
+    Task<PagedResult<AlertRule>> SearchAsync(string? keyword, SystemCategory? category, SourceType? sourceType, AlertLevel? alertLevel, int page, int pageSize);
+
     /// <summary>
     /// 获取所有启用的预警规则
     /// </summary>

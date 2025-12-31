@@ -6,7 +6,9 @@
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- 标题栏 -->
@@ -24,8 +26,63 @@
             </StackPanel>
         </Grid>
 
+        <!-- 搜索栏 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,16">
+            <TextBox Text="{Binding SearchKeyword, UpdateSourceTrigger=PropertyChanged}"
+                     hc:InfoElement.Placeholder="搜索规则名称..."
+                     Style="{StaticResource TextBoxExtend}"
+                     VerticalContentAlignment="Center"
+                     Width="200" Height="32">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding SearchCommand}"/>
+                </TextBox.InputBindings>
+            </TextBox>
+
+            <ComboBox ItemsSource="{Binding CategoryOptions}"
+                      SelectedItem="{Binding SelectedCategory}"
+                      Width="100" Height="32" Margin="10,0,0,0"
+                      hc:InfoElement.Placeholder="分类">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Converter={StaticResource NullableEnumDisplayConverter}, ConverterParameter=全部分类}"/>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <ComboBox ItemsSource="{Binding SourceTypeOptions}"
+                      SelectedItem="{Binding SelectedSourceType}"
+                      Width="100" Height="32" Margin="10,0,0,0"
+                      hc:InfoElement.Placeholder="数据源">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Converter={StaticResource NullableEnumDisplayConverter}, ConverterParameter=全部数据源}"/>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <ComboBox ItemsSource="{Binding AlertLevelOptions}"
+                      SelectedItem="{Binding SelectedAlertLevel}"
+                      Width="100" Height="32" Margin="10,0,0,0"
+                      hc:InfoElement.Placeholder="级别">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Converter={StaticResource NullableEnumDisplayConverter}, ConverterParameter=全部级别}"/>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <Button Content="搜索" Margin="10,0,0,0"
+                    Command="{Binding SearchCommand}"
+                    Style="{StaticResource ButtonPrimary}"
+                    Height="32"/>
+            <Button Content="重置" Margin="10,0,0,0"
+                    Command="{Binding ResetFilterCommand}"
+                    Style="{StaticResource ButtonDefault}"
+                    Height="32"/>
+        </StackPanel>
+
         <!-- 规则列表卡片 -->
-        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0" Padding="0">
+        <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0" Padding="0">
             <Grid>
                 <DataGrid ItemsSource="{Binding Rules}"
                           SelectedItem="{Binding SelectedRule}"
@@ -100,5 +157,35 @@
                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
         </Border>
+
+        <!-- 分页栏 -->
+        <Grid Grid.Row="3" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}">
+                <Run Text="共"/>
+                <Run Text="{Binding TotalCount, Mode=OneWay}"/>
+                <Run Text="条记录，第"/>
+                <Run Text="{Binding CurrentPage, Mode=OneWay}"/>
+                <Run Text="/"/>
+                <Run Text="{Binding TotalPages, Mode=OneWay}"/>
+                <Run Text="页"/>
+            </TextBlock>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="上一页"
+                        Command="{Binding PreviousPageCommand}"
+                        IsEnabled="{Binding HasPreviousPage}"
+                        Style="{StaticResource ButtonDefault}"
+                        Margin="0,0,10,0"/>
+                <Button Content="下一页"
+                        Command="{Binding NextPageCommand}"
+                        IsEnabled="{Binding HasNextPage}"
+                        Style="{StaticResource ButtonDefault}"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>

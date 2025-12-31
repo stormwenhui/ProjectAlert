@@ -131,7 +131,8 @@ public class SqlAlertExecutor : IAlertExecutor
         var message = template;
         foreach (var kvp in data)
         {
-            message = message.Replace($"{{{kvp.Key}}}", kvp.Value?.ToString() ?? string.Empty);
+            // 只支持 {table.列名} 格式
+            message = message.Replace($"{{table.{kvp.Key}}}", kvp.Value?.ToString() ?? string.Empty);
         }
         return message;
     }

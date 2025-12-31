@@ -327,7 +327,8 @@ public class ApiAlertExecutor : IAlertExecutor
         var message = template;
         foreach (var kvp in data)
         {
-            message = message.Replace($"{{{kvp.Key}}}", kvp.Value?.ToString() ?? string.Empty);
+            // 只支持 {api.参数名} 格式
+            message = message.Replace($"{{api.{kvp.Key}}}", kvp.Value?.ToString() ?? string.Empty);
         }
         return message;
     }

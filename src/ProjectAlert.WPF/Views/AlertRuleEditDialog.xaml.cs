@@ -234,7 +234,7 @@ public partial class AlertRuleEditDialog : HandyControl.Controls.Window
                 CmbDbConnection.Visibility = Visibility.Visible;
 
                 // 更新消息模板提示
-                TxtMessageTemplateHint.Text = "变量: {$name}规则名称, {$table.列名}查询结果字段\n示例: {$name} - 积压 {$table.cnt} 单";
+                TxtMessageTemplateHint.Text = "可用变量: {table.列名} - SQL查询返回的字段值\n示例: 客户 {table.CustomerName} 有异常: {table.LogContent}";
 
                 UpdateSqlJudgeTypeUI();
             }
@@ -247,7 +247,7 @@ public partial class AlertRuleEditDialog : HandyControl.Controls.Window
                 CmbDbConnection.Visibility = Visibility.Collapsed;
 
                 // 更新消息模板提示
-                TxtMessageTemplateHint.Text = "变量: {$name}规则名称, {$api.statusCode}状态码, {$api.value}值\n示例: {$name} - 状态异常: {$api.value}";
+                TxtMessageTemplateHint.Text = "可用变量: {api.参数名} - API返回的JSON字段值\n示例: 服务 {api.serviceName} 状态异常: {api.errorMsg}";
 
                 UpdateApiJudgeTypeUI();
             }
