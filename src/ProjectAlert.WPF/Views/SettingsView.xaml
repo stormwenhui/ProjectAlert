@@ -1,0 +1,38 @@
+<UserControl x:Class="ProjectAlert.WPF.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             Loaded="UserControl_Loaded">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 标题栏 -->
+        <TextBlock Grid.Row="0" Text="设置" Style="{StaticResource PageTitleStyle}"/>
+
+        <!-- 设置项 -->
+        <StackPanel Grid.Row="1" MaxWidth="600" HorizontalAlignment="Left">
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="常规设置" Style="{StaticResource CardTitleStyle}"/>
+
+                    <StackPanel Margin="0,8,0,0">
+                        <CheckBox Content="开机自动启动" IsChecked="{Binding AutoStart}"
+                                  Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,16"/>
+                        <CheckBox Content="显示悬浮窗" IsChecked="{Binding ShowFloatingWindow}"
+                                  Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,16"/>
+                        <CheckBox Content="最小化到托盘" IsChecked="{Binding MinimizeToTray}"
+                                  Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Button Content="保存设置" Command="{Binding SaveCommand}"
+                    Style="{StaticResource ButtonPrimary}"
+                    HorizontalAlignment="Left"
+                    Padding="24,10"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

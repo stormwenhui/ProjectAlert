@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目监控 V2 - 悬浮窗原型</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .demo-section {
+            text-align: center;
+        }
+
+        .demo-title {
+            color: white;
+            margin-bottom: 20px;
+            font-size: 14px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* 悬浮窗基础样式 */
+        .float-window {
+            background: rgba(22, 33, 62, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .float-header {
+            background: rgba(15, 52, 96, 0.8);
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            user-select: none;
+        }
+
+        .float-title {
+            font-size: 14px;
+            color: #00d9ff;
+            font-weight: 500;
+        }
+
+        .float-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .float-btn {
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .float-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #eee;
+        }
+
+        /* 概览模式 */
+        .overview-content {
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+        }
+
+        .overview-item {
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .overview-item:hover {
+            transform: scale(1.1);
+        }
+
+        .overview-dot {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            margin: 0 auto 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .overview-dot.critical {
+            background: linear-gradient(135deg, #e94560, #c23a51);
+        }
+
+        .overview-dot.warning {
+            background: linear-gradient(135deg, #fbbf24, #d9a520);
+        }
+
+        .overview-dot.info {
+            background: linear-gradient(135deg, #00d9ff, #00b8d9);
+        }
+
+        .overview-dot.empty {
+            background: linear-gradient(135deg, #4a5568, #3d4452);
+        }
+
+        .overview-label {
+            font-size: 12px;
+            color: #888;
+        }
+
+        /* 正常状态 */
+        .all-clear {
+            padding: 30px 20px;
+            text-align: center;
+            color: #4ade80;
+            font-size: 14px;
+        }
+
+        .all-clear .icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        /* 列表模式 */
+        .list-content {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .list-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .list-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .list-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        .alert-group {
+            padding: 0 15px;
+        }
+
+        .alert-group:first-child {
+            padding-top: 10px;
+        }
+
+        .alert-group:last-child {
+            padding-bottom: 15px;
+        }
+
+        .group-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        .group-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .group-dot.critical {
+            background: #e94560;
+        }
+
+        .group-dot.warning {
+            background: #fbbf24;
+        }
+
+        .group-dot.info {
+            background: #00d9ff;
+        }
+
+        .alert-item {
+            background: rgba(15, 52, 96, 0.6);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            margin-left: 18px;
+            position: relative;
+            cursor: context-menu;
+            transition: background 0.2s;
+        }
+
+        .alert-item:hover {
+            background: rgba(15, 52, 96, 0.9);
+        }
+
+        .alert-item::before {
+            content: '';
+            position: absolute;
+            left: -12px;
+            top: 18px;
+            width: 8px;
+            height: 1px;
+            background: #0f3460;
+        }
+
+        .alert-item:last-child::after {
+            display: none;
+        }
+
+        .alert-message {
+            font-size: 13px;
+            color: #eee;
+            margin-bottom: 6px;
+            line-height: 1.4;
+        }
+
+        .alert-meta {
+            font-size: 11px;
+            color: #666;
+        }
+
+        /* 右键菜单 */
+        .context-menu {
+            position: absolute;
+            background: rgba(22, 33, 62, 0.98);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            z-index: 1000;
+            min-width: 120px;
+            display: none;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .context-menu.show {
+            display: block;
+        }
+
+        .context-menu-item {
+            padding: 10px 15px;
+            font-size: 13px;
+            color: #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .context-menu-item:hover {
+            background: rgba(0, 217, 255, 0.2);
+        }
+
+        .context-menu-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 5px 0;
+        }
+
+        /* 统计窗口 */
+        .stat-window {
+            width: 320px;
+        }
+
+        .stat-content {
+            padding: 15px;
+        }
+
+        .stat-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .stat-table th,
+        .stat-table td {
+            padding: 8px 10px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-table th {
+            color: #888;
+            font-weight: normal;
+            font-size: 12px;
+        }
+
+        .stat-table td {
+            color: #eee;
+        }
+
+        .stat-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .stat-refresh {
+            font-size: 11px;
+            color: #666;
+            text-align: right;
+            margin-top: 10px;
+        }
+
+        /* 折线图占位 */
+        .chart-placeholder {
+            height: 150px;
+            background: rgba(15, 52, 96, 0.5);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .chart-svg {
+            width: 100%;
+            height: 150px;
+        }
+
+        .chart-line {
+            fill: none;
+            stroke: #00d9ff;
+            stroke-width: 2;
+        }
+
+        .chart-area {
+            fill: url(#gradient);
+        }
+
+        .chart-grid {
+            stroke: rgba(255, 255, 255, 0.1);
+            stroke-width: 1;
+        }
+
+        .chart-label {
+            fill: #666;
+            font-size: 10px;
+        }
+
+        /* 托盘菜单演示 */
+        .tray-menu {
+            background: rgba(22, 33, 62, 0.98);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            width: 180px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tray-menu-item {
+            padding: 10px 15px;
+            font-size: 13px;
+            color: #eee;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.2s;
+        }
+
+        .tray-menu-item:hover {
+            background: rgba(0, 217, 255, 0.2);
+        }
+
+        .tray-menu-item .icon {
+            width: 16px;
+            text-align: center;
+            color: #888;
+        }
+
+        .tray-menu-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 5px 0;
+        }
+
+        .tray-icon-demo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tray-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #00d9ff, #0099cc);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            position: relative;
+        }
+
+        .tray-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 14px;
+            height: 14px;
+            background: #e94560;
+            border-radius: 50%;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .tray-label {
+            font-size: 12px;
+            color: #888;
+        }
+
+        /* 状态标签 */
+        .status-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+
+        .status-tag.processing {
+            background: rgba(0, 217, 255, 0.2);
+            color: #00d9ff;
+        }
+
+        /* 分类Tab */
+        .category-tabs {
+            display: flex;
+            gap: 4px;
+            padding: 8px 12px;
+            background: rgba(15, 52, 96, 0.5);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-x: auto;
+        }
+
+        .category-tabs::-webkit-scrollbar {
+            height: 0;
+        }
+
+        .category-tab {
+            padding: 4px 10px;
+            font-size: 11px;
+            color: #888;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .category-tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #aaa;
+        }
+
+        .category-tab.active {
+            background: #00d9ff;
+            color: #1e1e2e;
+        }
+
+        .category-tab .count {
+            margin-left: 4px;
+            opacity: 0.7;
+        }
+
+        /* 预警来源标签 */
+        .alert-source {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-size: 10px;
+            margin-right: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <!-- 概览模式 - 有预警 -->
+    <div class="demo-section">
+        <div class="demo-title">概览模式 - 有预警</div>
+        <div class="float-window" style="width: 280px;">
+            <div class="float-header">
+                <span class="float-title">项目监控</span>
+                <div class="float-actions">
+                    <button class="float-btn">&#9881;</button>
+                </div>
+            </div>
+            <div class="overview-content">
+                <div class="overview-item">
+                    <div class="overview-dot critical">1</div>
+                    <div class="overview-label">严重</div>
+                </div>
+                <div class="overview-item">
+                    <div class="overview-dot warning">2</div>
+                    <div class="overview-label">警告</div>
+                </div>
+                <div class="overview-item">
+                    <div class="overview-dot info">0</div>
+                    <div class="overview-label">信息</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 概览模式 - 正常 -->
+    <div class="demo-section">
+        <div class="demo-title">概览模式 - 正常</div>
+        <div class="float-window" style="width: 280px;">
+            <div class="float-header">
+                <span class="float-title">项目监控</span>
+                <div class="float-actions">
+                    <button class="float-btn">&#9881;</button>
+                </div>
+            </div>
+            <div class="all-clear">
+                <div class="icon">&#10004;</div>
+                <div>一切正常</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 列表模式 -->
+    <div class="demo-section">
+        <div class="demo-title">列表模式 - 展开详情</div>
+        <div class="float-window" style="width: 380px;">
+            <div class="float-header">
+                <span class="float-title">项目监控</span>
+                <div class="float-actions">
+                    <button class="float-btn">收起</button>
+                    <button class="float-btn">&#9881;</button>
+                </div>
+            </div>
+            <!-- 系统分类Tab -->
+            <div class="category-tabs">
+                <span class="category-tab active">全部<span class="count">(3)</span></span>
+                <span class="category-tab">订单中心<span class="count">(1)</span></span>
+                <span class="category-tab">支付中心<span class="count">(1)</span></span>
+                <span class="category-tab">系统监控<span class="count">(1)</span></span>
+            </div>
+            <div class="list-content">
+                <div class="alert-group">
+                    <div class="group-header">
+                        <span class="group-dot critical"></span>
+                        <span>严重 (1)</span>
+                    </div>
+                    <div class="alert-item">
+                        <div class="alert-message">
+                            <span class="alert-source">系统监控</span>
+                            官网健康检查 - 站点无法访问（状态码: 502）
+                        </div>
+                        <div class="alert-meta">首次: 09:30 | 最后: 10:45 | 累计 15次</div>
+                    </div>
+                </div>
+                <div class="alert-group">
+                    <div class="group-header">
+                        <span class="group-dot warning"></span>
+                        <span>警告 (2)</span>
+                    </div>
+                    <div class="alert-item">
+                        <div class="alert-message">
+                            <span class="alert-source">订单中心</span>
+                            订单积压预警 - 积压 1523 单
+                            <span class="status-tag processing">处理中</span>
+                        </div>
+                        <div class="alert-meta">首次: 08:00 | 最后: 10:40 | 累计 8次</div>
+                    </div>
+                    <div class="alert-item">
+                        <div class="alert-message">
+                            <span class="alert-source">支付中心</span>
+                            支付失败监控 - 张三 支付超时，金额: 500元
+                        </div>
+                        <div class="alert-meta">首次: 10:20 | 最后: 10:45 | 累计 3次</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 列表模式 - 筛选后 -->
+    <div class="demo-section">
+        <div class="demo-title">列表模式 - 按分类筛选</div>
+        <div class="float-window" style="width: 380px;">
+            <div class="float-header">
+                <span class="float-title">项目监控</span>
+                <div class="float-actions">
+                    <button class="float-btn">收起</button>
+                    <button class="float-btn">&#9881;</button>
+                </div>
+            </div>
+            <!-- 系统分类Tab - 选中订单中心 -->
+            <div class="category-tabs">
+                <span class="category-tab">全部<span class="count">(3)</span></span>
+                <span class="category-tab active">订单中心<span class="count">(1)</span></span>
+                <span class="category-tab">支付中心<span class="count">(1)</span></span>
+                <span class="category-tab">系统监控<span class="count">(1)</span></span>
+            </div>
+            <div class="list-content">
+                <div class="alert-group">
+                    <div class="group-header">
+                        <span class="group-dot warning"></span>
+                        <span>警告 (1)</span>
+                    </div>
+                    <div class="alert-item">
+                        <div class="alert-message">
+                            订单积压预警 - 积压 1523 单
+                            <span class="status-tag processing">处理中</span>
+                        </div>
+                        <div class="alert-meta">首次: 08:00 | 最后: 10:40 | 累计 8次</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 统计窗口 - 表格 -->
+    <div class="demo-section">
+        <div class="demo-title">统计窗口 - 表格</div>
+        <div class="float-window stat-window">
+            <div class="float-header">
+                <span class="float-title">今日订单统计</span>
+                <div class="float-actions">
+                    <button class="float-btn">&#8635;</button>
+                    <button class="float-btn">&times;</button>
+                </div>
+            </div>
+            <div class="stat-content">
+                <table class="stat-table">
+                    <thead>
+                        <tr>
+                            <th>状态</th>
+                            <th>数量</th>
+                            <th>金额</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>待支付</td>
+                            <td>156</td>
+                            <td>¥45,320</td>
+                        </tr>
+                        <tr>
+                            <td>已支付</td>
+                            <td>892</td>
+                            <td>¥234,560</td>
+                        </tr>
+                        <tr>
+                            <td>已完成</td>
+                            <td>1,245</td>
+                            <td>¥456,780</td>
+                        </tr>
+                        <tr>
+                            <td>已取消</td>
+                            <td>23</td>
+                            <td>¥8,920</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="stat-refresh">刷新间隔: 60秒 | 上次: 10:45:30</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 统计窗口 - 折线图 -->
+    <div class="demo-section">
+        <div class="demo-title">统计窗口 - 折线图</div>
+        <div class="float-window" style="width: 380px;">
+            <div class="float-header">
+                <span class="float-title">近7日订单趋势</span>
+                <div class="float-actions">
+                    <button class="float-btn">&#8635;</button>
+                    <button class="float-btn">&times;</button>
+                </div>
+            </div>
+            <div class="stat-content">
+                <svg class="chart-svg" viewBox="0 0 340 150">
+                    <defs>
+                        <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" style="stop-color:#00d9ff;stop-opacity:0.3" />
+                            <stop offset="100%" style="stop-color:#00d9ff;stop-opacity:0" />
+                        </linearGradient>
+                    </defs>
+                    <!-- 网格线 -->
+                    <line class="chart-grid" x1="40" y1="20" x2="330" y2="20"/>
+                    <line class="chart-grid" x1="40" y1="50" x2="330" y2="50"/>
+                    <line class="chart-grid" x1="40" y1="80" x2="330" y2="80"/>
+                    <line class="chart-grid" x1="40" y1="110" x2="330" y2="110"/>
+
+                    <!-- Y轴标签 -->
+                    <text class="chart-label" x="35" y="23" text-anchor="end">1500</text>
+                    <text class="chart-label" x="35" y="53" text-anchor="end">1000</text>
+                    <text class="chart-label" x="35" y="83" text-anchor="end">500</text>
+                    <text class="chart-label" x="35" y="113" text-anchor="end">0</text>
+
+                    <!-- X轴标签 -->
+                    <text class="chart-label" x="60" y="130">12/20</text>
+                    <text class="chart-label" x="110" y="130">12/21</text>
+                    <text class="chart-label" x="160" y="130">12/22</text>
+                    <text class="chart-label" x="210" y="130">12/23</text>
+                    <text class="chart-label" x="260" y="130">12/24</text>
+                    <text class="chart-label" x="310" y="130">12/25</text>
+
+                    <!-- 折线区域 -->
+                    <path class="chart-area" d="M60,90 L110,70 L160,80 L210,50 L260,40 L310,55 L310,110 L60,110 Z"/>
+
+                    <!-- 折线 -->
+                    <path class="chart-line" d="M60,90 L110,70 L160,80 L210,50 L260,40 L310,55"/>
+
+                    <!-- 数据点 -->
+                    <circle cx="60" cy="90" r="4" fill="#00d9ff"/>
+                    <circle cx="110" cy="70" r="4" fill="#00d9ff"/>
+                    <circle cx="160" cy="80" r="4" fill="#00d9ff"/>
+                    <circle cx="210" cy="50" r="4" fill="#00d9ff"/>
+                    <circle cx="260" cy="40" r="4" fill="#00d9ff"/>
+                    <circle cx="310" cy="55" r="4" fill="#00d9ff"/>
+                </svg>
+                <div class="stat-refresh">刷新间隔: 5分钟 | 上次: 10:45:00</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 托盘菜单 -->
+    <div class="demo-section">
+        <div class="demo-title">托盘图标与菜单</div>
+        <div class="tray-icon-demo">
+            <div class="tray-icon">
+                &#9888;
+                <span class="tray-badge">3</span>
+            </div>
+            <div class="tray-label">有预警时显示角标</div>
+        </div>
+        <div class="tray-menu">
+            <div class="tray-menu-item">
+                <span class="icon">&#128194;</span>
+                <span>打开主窗口</span>
+            </div>
+            <div class="tray-menu-item">
+                <span class="icon">&#128203;</span>
+                <span>显示悬浮窗</span>
+            </div>
+            <div class="tray-menu-divider"></div>
+            <div class="tray-menu-item">
+                <span class="icon">&#9208;</span>
+                <span>暂停任务</span>
+            </div>
+            <div class="tray-menu-item">
+                <span class="icon">&#8635;</span>
+                <span>刷新数据</span>
+            </div>
+            <div class="tray-menu-divider"></div>
+            <div class="tray-menu-item">
+                <span class="icon">&#10006;</span>
+                <span>退出</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右键菜单演示 -->
+    <div class="demo-section">
+        <div class="demo-title">预警项右键菜单</div>
+        <div class="context-menu show" style="position: relative; display: block;">
+            <div class="context-menu-item">标记为处理中</div>
+            <div class="context-menu-item">忽略此预警</div>
+            <div class="context-menu-item">标记为已恢复</div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item">复制消息</div>
+        </div>
+    </div>
+
+    <script>
+        // 点击概览模式切换到列表模式的演示
+        document.querySelectorAll('.overview-content').forEach(content => {
+            content.style.cursor = 'pointer';
+            content.title = '点击展开列表模式';
+        });
+
+        // 分类Tab切换
+        document.querySelectorAll('.category-tabs').forEach(tabs => {
+            tabs.querySelectorAll('.category-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    tabs.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+        });
+
+        // 右键菜单演示
+        document.querySelectorAll('.alert-item').forEach(item => {
+            item.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                // 实际应用中显示右键菜单
+            });
+        });
+    </script>
+</body>
+</html>

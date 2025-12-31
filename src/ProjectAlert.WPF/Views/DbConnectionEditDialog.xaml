@@ -1,0 +1,63 @@
+<hc:Window x:Class="ProjectAlert.WPF.Views.DbConnectionEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:hc="https://handyorg.github.io/handycontrol"
+        Title="数据库连接配置"
+        Height="450" Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 名称 -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,15">
+            <TextBlock Text="连接名称" Margin="0,0,0,5"/>
+            <TextBox x:Name="TxtName" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"/>
+        </StackPanel>
+
+        <!-- 数据库类型 -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,15">
+            <TextBlock Text="数据库类型" Margin="0,0,0,5"/>
+            <ComboBox x:Name="CmbDbType">
+                <ComboBoxItem Content="MySql"/>
+                <ComboBoxItem Content="SqlServer"/>
+            </ComboBox>
+        </StackPanel>
+
+        <!-- 连接字符串 -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,15">
+            <TextBlock Text="连接字符串" Margin="0,0,0,5"/>
+            <TextBox x:Name="TxtConnectionString"
+                     Text="{Binding ConnectionString, UpdateSourceTrigger=PropertyChanged}"
+                     TextWrapping="Wrap"
+                     AcceptsReturn="True"
+                     Height="80"
+                     VerticalScrollBarVisibility="Auto"/>
+        </StackPanel>
+
+        <!-- 启用状态 -->
+        <CheckBox Grid.Row="3" Content="启用此连接" IsChecked="{Binding Enabled}" Margin="0,0,0,15"/>
+
+        <!-- 测试结果 -->
+        <TextBlock Grid.Row="4" x:Name="TxtTestResult"
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Top"
+                   Foreground="Gray"/>
+
+        <!-- 按钮区域 -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="测试连接" Click="BtnTest_Click" Margin="0,0,10,0" Style="{StaticResource ButtonDefault}"/>
+            <Button Content="保存" Click="BtnSave_Click" Style="{StaticResource ButtonPrimary}"/>
+            <Button Content="取消" Click="BtnCancel_Click" Margin="10,0,0,0" Style="{StaticResource ButtonDefault}"/>
+        </StackPanel>
+    </Grid>
+</hc:Window>

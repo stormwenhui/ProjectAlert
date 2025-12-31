@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目监控 - 管理端</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; font-size: 14px; }
+
+        /* 主布局 */
+        .app-container { display: flex; height: 100vh; }
+        .sidebar { width: 200px; background: #f5f5f5; border-right: 1px solid #ddd; }
+        .main-content { flex: 1; padding: 20px; overflow-y: auto; }
+
+        /* 导航 */
+        .nav-title { padding: 15px; font-size: 16px; font-weight: bold; border-bottom: 1px solid #ddd; }
+        .nav-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #eee; }
+        .nav-item:hover { background: #e8e8e8; }
+        .nav-item.active { background: #1890ff; color: white; }
+
+        /* 通用样式 */
+        .page-title { font-size: 18px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+        .btn { padding: 6px 12px; margin-right: 5px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
+        .btn-primary { background: #1890ff; color: white; border-color: #1890ff; }
+        .btn-danger { background: #ff4d4f; color: white; border-color: #ff4d4f; }
+        .btn-success { background: #52c41a; color: white; border-color: #52c41a; }
+
+        /* 表格 */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #fafafa; }
+
+        /* 表单 */
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 8px; border: 1px solid #ddd;
+        }
+        .form-group textarea { height: 80px; resize: vertical; }
+        .form-inline { display: flex; gap: 10px; align-items: center; }
+        .form-inline label { margin-bottom: 0; }
+
+        /* 弹窗 */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;
+        }
+        .modal { background: white; padding: 20px; min-width: 500px; max-width: 700px; max-height: 80vh; overflow-y: auto; }
+        .modal-header { font-size: 16px; font-weight: bold; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+        .modal-footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; text-align: right; }
+
+        /* 标签 */
+        .tag { display: inline-block; padding: 2px 8px; font-size: 12px; margin-right: 5px; }
+        .tag-info { background: #e6f7ff; color: #1890ff; }
+        .tag-warning { background: #fff7e6; color: #fa8c16; }
+        .tag-critical { background: #fff1f0; color: #ff4d4f; }
+        .tag-success { background: #f6ffed; color: #52c41a; }
+        .tag-default { background: #f5f5f5; color: #666; }
+
+        /* 工具栏 */
+        .toolbar { margin-bottom: 15px; display: flex; gap: 10px; align-items: center; }
+
+        /* 状态显示 */
+        .status-enabled { color: #52c41a; }
+        .status-disabled { color: #999; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="app-container">
+            <!-- 左侧导航 -->
+            <div class="sidebar">
+                <div class="nav-title">项目监控管理</div>
+                <div class="nav-item" :class="{active: currentPage === 'system'}" @click="currentPage = 'system'">系统管理</div>
+                <div class="nav-item" :class="{active: currentPage === 'datasource'}" @click="currentPage = 'datasource'">数据源管理</div>
+                <div class="nav-item" :class="{active: currentPage === 'rule'}" @click="currentPage = 'rule'">预警规则</div>
+                <div class="nav-item" :class="{active: currentPage === 'stats'}" @click="currentPage = 'stats'">统计配置</div>
+                <div class="nav-item" :class="{active: currentPage === 'alerts'}" @click="currentPage = 'alerts'">
+                    预警结果
+                    <span v-if="activeAlertCount > 0" style="background:#ff4d4f;color:#fff;padding:2px 6px;border-radius:10px;font-size:11px;margin-left:5px">{{activeAlertCount}}</span>
+                </div>
+                <div class="nav-item" :class="{active: currentPage === 'ignored'}" @click="currentPage = 'ignored'">已忽略预警</div>
+                <div class="nav-item" :class="{active: currentPage === 'settings'}" @click="currentPage = 'settings'">系统设置</div>
+            </div>
+
+            <!-- 右侧内容区 -->
+            <div class="main-content">
+                <!-- 系统管理 -->
+                <div v-if="currentPage === 'system'">
+                    <div class="page-title">系统管理</div>
+                    <div class="toolbar">
+                        <button class="btn btn-primary" @click="openSystemModal()">新增系统</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:50px">ID</th>
+                                <th>系统名称</th>
+                                <th style="width:80px">排序</th>
+                                <th style="width:80px">状态</th>
+                                <th style="width:120px">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="s in systems" :key="s.id">
+                                <td>{{s.id}}</td>
+                                <td>{{s.name}}</td>
+                                <td>{{s.sortOrder}}</td>
+                                <td>
+                                    <span :class="s.enabled ? 'status-enabled' : 'status-disabled'">
+                                        {{s.enabled ? '启用' : '禁用'}}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn" @click="openSystemModal(s)">编辑</button>
+                                    <button class="btn btn-danger" @click="deleteSystem(s)">删除</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 数据源管理 -->
+                <div v-if="currentPage === 'datasource'">
+                    <div class="page-title">数据源管理</div>
+                    <div class="toolbar">
+                        <button class="btn btn-primary" @click="openDatasourceModal()">新增数据源</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:50px">ID</th>
+                                <th>名称</th>
+                                <th style="width:100px">类型</th>
+                                <th>连接信息</th>
+                                <th style="width:80px">状态</th>
+                                <th style="width:180px">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="ds in dataSources" :key="ds.id">
+                                <td>{{ds.id}}</td>
+                                <td>{{ds.name}}</td>
+                                <td>
+                                    <span class="tag" :class="{'tag-info': ds.type==='api', 'tag-success': ds.type!=='api'}">{{ds.type}}</span>
+                                </td>
+                                <td>{{ds.type === 'api' ? ds.apiUrl : ds.connectionString}}</td>
+                                <td>
+                                    <span :class="ds.enabled ? 'status-enabled' : 'status-disabled'">
+                                        {{ds.enabled ? '启用' : '禁用'}}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn" @click="testDatasource(ds)">测试</button>
+                                    <button class="btn" @click="openDatasourceModal(ds)">编辑</button>
+                                    <button class="btn btn-danger" @click="deleteDatasource(ds)">删除</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 预警规则 -->
+                <div v-if="currentPage === 'rule'">
+                    <div class="page-title">预警规则</div>
+                    <div class="toolbar">
+                        <button class="btn btn-primary" @click="openRuleModal()">新增规则</button>
+                        <span style="margin-left:20px">筛选系统：</span>
+                        <select v-model="ruleFilterSystem" style="padding:5px;width:150px">
+                            <option value="">全部</option>
+                            <option v-for="s in systems" :key="s.id" :value="s.id">{{s.name}}</option>
+                        </select>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:50px">ID</th>
+                                <th>规则名称</th>
+                                <th>所属系统</th>
+                                <th>数据源</th>
+                                <th>级别</th>
+                                <th>Cron</th>
+                                <th style="width:80px">状态</th>
+                                <th style="width:120px">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="r in filteredRules" :key="r.id">
+                                <td>{{r.id}}</td>
+                                <td>{{r.name}}</td>
+                                <td>{{getSystemName(r.systemId)}}</td>
+                                <td>{{getDatasourceName(r.dataSourceId)}}</td>
+                                <td>
+                                    <span class="tag" :class="'tag-'+r.alertLevel">{{levelText(r.alertLevel)}}</span>
+                                </td>
+                                <td>{{r.cronExpression}}</td>
+                                <td>
+                                    <span :class="r.enabled ? 'status-enabled' : 'status-disabled'">
+                                        {{r.enabled ? '启用' : '禁用'}}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn" @click="openRuleModal(r)">编辑</button>
+                                    <button class="btn btn-danger" @click="deleteRule(r)">删除</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 统计配置 -->
+                <div v-if="currentPage === 'stats'">
+                    <div class="page-title">统计配置</div>
+                    <div class="toolbar">
+                        <button class="btn btn-primary" @click="openStatModal()">新增统计</button>
+                        <span style="margin-left:20px">筛选系统：</span>
+                        <select v-model="statFilterSystem" style="padding:5px;width:150px">
+                            <option value="">全部</option>
+                            <option v-for="s in systems" :key="s.id" :value="s.id">{{s.name}}</option>
+                        </select>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:50px">ID</th>
+                                <th>统计名称</th>
+                                <th>所属系统</th>
+                                <th>数据源</th>
+                                <th style="width:80px">图表类型</th>
+                                <th style="width:80px">刷新间隔</th>
+                                <th style="width:80px">状态</th>
+                                <th style="width:150px">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="s in filteredStats" :key="s.id">
+                                <td>{{s.id}}</td>
+                                <td>{{s.name}}</td>
+                                <td>{{getSystemName(s.systemId)}}</td>
+                                <td>{{getDatasourceName(s.dataSourceId)}}</td>
+                                <td>
+                                    <span class="tag" :class="s.chartType === 'table' ? 'tag-info' : 'tag-success'">
+                                        {{s.chartType === 'table' ? '表格' : '折线图'}}
+                                    </span>
+                                </td>
+                                <td>{{s.refreshInterval}}秒</td>
+                                <td>
+                                    <span :class="s.enabled ? 'status-enabled' : 'status-disabled'">
+                                        {{s.enabled ? '启用' : '禁用'}}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn" @click="previewStat(s)">预览</button>
+                                    <button class="btn" @click="openStatModal(s)">编辑</button>
+                                    <button class="btn btn-danger" @click="deleteStat(s)">删除</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 预警结果 -->
+                <div v-if="currentPage === 'alerts'">
+                    <div class="page-title">预警结果</div>
+                    <div class="toolbar" style="flex-wrap:wrap">
+                        <span>状态：</span>
+                        <select v-model="alertFilterStatus" style="padding:5px;width:100px">
+                            <option value="">全部</option>
+                            <option value="active">待处理</option>
+                            <option value="processing">处理中</option>
+                            <option value="recovered">已恢复</option>
+                        </select>
+                        <span style="margin-left:10px">级别：</span>
+                        <select v-model="alertFilterLevel" style="padding:5px;width:100px">
+                            <option value="">全部</option>
+                            <option value="info">信息</option>
+                            <option value="warning">警告</option>
+                            <option value="critical">严重</option>
+                        </select>
+                        <span style="margin-left:10px">规则：</span>
+                        <select v-model="alertFilterRule" style="padding:5px;width:150px">
+                            <option value="">全部</option>
+                            <option v-for="r in alertRules" :key="r.id" :value="r.id">{{r.name}}</option>
+                        </select>
+                        <span style="margin-left:10px">系统：</span>
+                        <select v-model="alertFilterSystem" style="padding:5px;width:120px">
+                            <option value="">全部</option>
+                            <option v-for="s in systems" :key="s.id" :value="s.id">{{s.name}}</option>
+                        </select>
+                        <button class="btn" style="margin-left:auto" @click="refreshAlerts">刷新</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:50px">ID</th>
+                                <th>规则名称</th>
+                                <th>预警Key</th>
+                                <th>预警消息</th>
+                                <th style="width:70px">级别</th>
+                                <th style="width:80px">状态</th>
+                                <th style="width:50px">次数</th>
+                                <th style="width:140px">首次触发</th>
+                                <th style="width:140px">最后触发</th>
+                                <th style="width:180px">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="a in filteredAlerts" :key="a.id">
+                                <td>{{a.id}}</td>
+                                <td>{{getRuleName(a.ruleId)}}</td>
+                                <td>{{a.alertKey || '(无)'}}</td>
+                                <td>{{a.message}}</td>
+                                <td>
+                                    <span class="tag" :class="'tag-'+a.level">{{levelText(a.level)}}</span>
+                                </td>
+                                <td>
+                                    <span class="tag" :class="statusTagClass(a.status)">{{statusText(a.status)}}</span>
+                                </td>
+                                <td>{{a.triggerCount}}</td>
+                                <td>{{a.firstTriggerTime}}</td>
+                                <td>{{a.lastTriggerTime}}</td>
+                                <td>
+                                    <button class="btn" v-if="a.status === 'active'" @click="markProcessing(a)">处理中</button>
+                                    <button class="btn btn-success" v-if="a.status !== 'recovered'" @click="markRecovered(a)">已恢复</button>
+                                    <button class="btn btn-danger" @click="ignoreAlert(a)">忽略</button>
+                                </td>
+                            </tr>
+                            <tr v-if="filteredAlerts.length === 0">
+                                <td colspan="10" style="text-align:center;color:#999">暂无预警记录</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 已忽略预警 -->
+                <div v-if="currentPage === 'ignored'">
+                    <div class="page-title">已忽略预警</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:50px">ID</th>
+                                <th>规则名称</th>
+                                <th>预警Key</th>
+                                <th>忽略原因</th>
+                                <th>忽略时间</th>
+                                <th style="width:100px">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="ia in ignoredAlerts" :key="ia.id">
+                                <td>{{ia.id}}</td>
+                                <td>{{getRuleName(ia.ruleId)}}</td>
+                                <td>{{ia.alertKey || '(无)'}}</td>
+                                <td>{{ia.ignoredReason || '-'}}</td>
+                                <td>{{ia.ignoredAt}}</td>
+                                <td>
+                                    <button class="btn btn-success" @click="cancelIgnore(ia)">取消忽略</button>
+                                </td>
+                            </tr>
+                            <tr v-if="ignoredAlerts.length === 0">
+                                <td colspan="6" style="text-align:center;color:#999">暂无已忽略的预警</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 系统设置 -->
+                <div v-if="currentPage === 'settings'">
+                    <div class="page-title">系统设置</div>
+                    <div style="max-width:500px">
+                        <div class="form-group">
+                            <label>数据库连接字符串</label>
+                            <input type="text" v-model="settings.dbConnection" placeholder="Server=localhost;Database=alert_db;Uid=root;Pwd=xxx;">
+                        </div>
+                        <div class="form-group">
+                            <label>默认查询超时时间（秒）</label>
+                            <input type="number" v-model="settings.defaultTimeout">
+                        </div>
+                        <div class="form-group">
+                            <label>悬浮窗刷新间隔（秒）</label>
+                            <input type="number" v-model="settings.refreshInterval">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" v-model="settings.autoStart"> 开机自启动
+                            </label>
+                        </div>
+                        <button class="btn btn-primary" @click="saveSettings">保存设置</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据源编辑弹窗 -->
+        <div class="modal-overlay" v-if="showDatasourceModal" @click.self="showDatasourceModal = false">
+            <div class="modal">
+                <div class="modal-header">{{editingDatasource.id ? '编辑' : '新增'}}数据源</div>
+                <div class="form-group">
+                    <label>名称 *</label>
+                    <input type="text" v-model="editingDatasource.name" placeholder="如：业务主库">
+                </div>
+                <div class="form-group">
+                    <label>类型 *</label>
+                    <select v-model="editingDatasource.type">
+                        <option value="mysql">MySQL</option>
+                        <option value="sqlserver">SQL Server</option>
+                        <option value="api">API接口</option>
+                    </select>
+                </div>
+
+                <!-- 数据库类型配置 -->
+                <template v-if="editingDatasource.type !== 'api'">
+                    <div class="form-group">
+                        <label>连接字符串 *</label>
+                        <input type="text" v-model="editingDatasource.connectionString"
+                            placeholder="Server=localhost;Database=mydb;Uid=root;Pwd=123456;">
+                    </div>
+                </template>
+
+                <!-- API类型配置 -->
+                <template v-if="editingDatasource.type === 'api'">
+                    <div class="form-group">
+                        <label>API地址 *</label>
+                        <input type="text" v-model="editingDatasource.apiUrl" placeholder="https://api.example.com/health">
+                    </div>
+                    <div class="form-group">
+                        <label>请求方法</label>
+                        <select v-model="editingDatasource.apiMethod">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>请求头（JSON格式）</label>
+                        <textarea v-model="editingDatasource.apiHeaders" placeholder='{"Authorization": "Bearer xxx"}'></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>请求体</label>
+                        <textarea v-model="editingDatasource.apiBody" placeholder="POST请求的body内容"></textarea>
+                    </div>
+                </template>
+
+                <div class="form-group">
+                    <label>超时时间（秒）</label>
+                    <input type="number" v-model="editingDatasource.timeout">
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" v-model="editingDatasource.enabled"> 启用</label>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn" @click="showDatasourceModal = false">取消</button>
+                    <button class="btn btn-primary" @click="saveDatasource">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 系统编辑弹窗 -->
+        <div class="modal-overlay" v-if="showSystemModal" @click.self="showSystemModal = false">
+            <div class="modal">
+                <div class="modal-header">{{editingSystem.id ? '编辑' : '新增'}}系统</div>
+                <div class="form-group">
+                    <label>系统名称 *</label>
+                    <input type="text" v-model="editingSystem.name" placeholder="如：订单中心">
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" v-model="editingSystem.sortOrder">
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" v-model="editingSystem.enabled"> 启用</label>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn" @click="showSystemModal = false">取消</button>
+                    <button class="btn btn-primary" @click="saveSystem">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 规则编辑弹窗 -->
+        <div class="modal-overlay" v-if="showRuleModal" @click.self="showRuleModal = false">
+            <div class="modal" style="min-width:650px">
+                <div class="modal-header">{{editingRule.id ? '编辑' : '新增'}}预警规则</div>
+
+                <!-- 通用字段 -->
+                <div class="form-group">
+                    <label>规则名称 *</label>
+                    <input type="text" v-model="editingRule.name" placeholder="如：订单积压预警">
+                </div>
+
+                <div class="form-inline form-group">
+                    <div style="flex:1">
+                        <label>所属系统</label>
+                        <select v-model="editingRule.systemId" style="width:100%">
+                            <option value="">无</option>
+                            <option v-for="s in systems" :key="s.id" :value="s.id">{{s.name}}</option>
+                        </select>
+                    </div>
+                    <div style="flex:1">
+                        <label>数据源 *</label>
+                        <select v-model="editingRule.dataSourceId" style="width:100%">
+                            <option value="">请选择</option>
+                            <option v-for="ds in dataSources" :key="ds.id" :value="ds.id">{{ds.name}} ({{ds.type}})</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- ========== SQL 数据源配置 ========== -->
+                <template v-if="selectedDatasourceType && selectedDatasourceType !== 'api'">
+                    <div style="background:#f0f9ff;padding:10px;margin:15px 0;border-left:3px solid #1890ff">
+                        <strong>SQL 数据源配置</strong>
+                    </div>
+
+                    <div class="form-group">
+                        <label>SQL语句 *</label>
+                        <textarea v-model="editingRule.queryContent" rows="4"
+                            :placeholder="editingRule.judgeType === 'single' ? 'SELECT COUNT(*) as cnt FROM orders WHERE status=\'pending\'' : 'SELECT error_id, customer_name, error_msg FROM error_logs WHERE status=\'unresolved\''"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>判断方式 *</label>
+                        <select v-model="editingRule.judgeType" style="width:100%">
+                            <option value="single">单值预警 - SQL返回单个值，与阈值比较</option>
+                            <option value="multi">多行预警 - SQL返回需预警的数据，有数据即预警</option>
+                        </select>
+                    </div>
+
+                    <!-- 单值预警配置 -->
+                    <template v-if="editingRule.judgeType === 'single'">
+                        <div class="form-inline form-group">
+                            <div style="flex:1">
+                                <label>判断字段 *</label>
+                                <input type="text" v-model="editingRule.judgeField" placeholder="如：cnt">
+                            </div>
+                            <div style="flex:0.5">
+                                <label>运算符 *</label>
+                                <select v-model="editingRule.judgeOperator" style="width:100%">
+                                    <option value=">">&gt;</option>
+                                    <option value=">=">&gt;=</option>
+                                    <option value="<">&lt;</option>
+                                    <option value="<=">&lt;=</option>
+                                    <option value="=">=</option>
+                                    <option value="!=">!=</option>
+                                </select>
+                            </div>
+                            <div style="flex:0.5">
+                                <label>阈值 *</label>
+                                <input type="text" v-model="editingRule.judgeValue" placeholder="如：100">
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- 多行预警配置 -->
+                    <template v-if="editingRule.judgeType === 'multi'">
+                        <div class="form-group">
+                            <label>唯一标识字段 *</label>
+                            <input type="text" v-model="editingRule.keyField" placeholder="如：error_id">
+                            <div style="font-size:12px;color:#999;margin-top:5px">
+                                用于区分不同预警项的字段名，每行数据生成一条独立预警
+                            </div>
+                        </div>
+                    </template>
+                </template>
+
+                <!-- ========== API 数据源配置 ========== -->
+                <template v-if="selectedDatasourceType === 'api'">
+                    <div style="background:#fff7e6;padding:10px;margin:15px 0;border-left:3px solid #fa8c16">
+                        <strong>API 数据源配置</strong>
+                    </div>
+
+                    <div class="form-group">
+                        <label>判断层级 *</label>
+                        <select v-model="editingRule.apiJudgeLevel" style="width:100%">
+                            <option value="request">请求层 - 仅判断请求是否成功</option>
+                            <option value="text">响应文本层 - 把响应体当字符串匹配</option>
+                            <option value="json">JSON解析层 - 解析JSON后按路径提取数据</option>
+                        </select>
+                    </div>
+
+                    <!-- 请求层配置 -->
+                    <template v-if="editingRule.apiJudgeLevel === 'request'">
+                        <div class="form-inline form-group">
+                            <div style="flex:1">
+                                <label>判断方式 *</label>
+                                <select v-model="editingRule.judgeType" style="width:100%">
+                                    <option value="request_fail">请求失败（超时/无法连接）</option>
+                                    <option value="status_code">状态码判断</option>
+                                </select>
+                            </div>
+                            <template v-if="editingRule.judgeType === 'status_code'">
+                                <div style="flex:0.5">
+                                    <label>运算符</label>
+                                    <select v-model="editingRule.judgeOperator" style="width:100%">
+                                        <option value="=">= </option>
+                                        <option value="!=">!=</option>
+                                        <option value=">">&gt;</option>
+                                        <option value=">=">&gt;=</option>
+                                    </select>
+                                </div>
+                                <div style="flex:0.5">
+                                    <label>状态码</label>
+                                    <input type="text" v-model="editingRule.judgeValue" placeholder="200">
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- 响应文本层配置 -->
+                    <template v-if="editingRule.apiJudgeLevel === 'text'">
+                        <div class="form-inline form-group">
+                            <div style="flex:1">
+                                <label>判断方式 *</label>
+                                <select v-model="editingRule.judgeType" style="width:100%">
+                                    <option value="text_equals">等于</option>
+                                    <option value="text_not_equals">不等于</option>
+                                    <option value="text_contains">包含</option>
+                                    <option value="text_not_contains">不包含</option>
+                                </select>
+                            </div>
+                            <div style="flex:1">
+                                <label>匹配文本 *</label>
+                                <input type="text" v-model="editingRule.judgeValue" placeholder="如：healthy">
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- JSON解析层配置 -->
+                    <template v-if="editingRule.apiJudgeLevel === 'json'">
+                        <div class="form-group">
+                            <label>数据路径 *</label>
+                            <input type="text" v-model="editingRule.dataPath" placeholder="如：data、data.errorCount、data.items">
+                            <div style="font-size:12px;color:#999;margin-top:5px">
+                                从API返回的JSON中提取数据的路径
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>判断方式 *</label>
+                            <select v-model="editingRule.judgeType" style="width:100%">
+                                <option value="single">单值预警 - 提取结果为简单值或对象，与阈值比较</option>
+                                <option value="multi">多行预警 - 提取结果为数组，有数据即预警</option>
+                            </select>
+                        </div>
+
+                        <!-- 单值预警配置 -->
+                        <template v-if="editingRule.judgeType === 'single'">
+                            <div class="form-inline form-group">
+                                <div style="flex:1">
+                                    <label>比较类型 *</label>
+                                    <select v-model="editingRule.compareType" style="width:100%">
+                                        <option value="number">数值比较</option>
+                                        <option value="text_equals">文本等于</option>
+                                        <option value="text_not_equals">文本不等于</option>
+                                    </select>
+                                </div>
+                                <div style="flex:1">
+                                    <label>判断字段（对象时）</label>
+                                    <input type="text" v-model="editingRule.judgeField" placeholder="如：errorCount">
+                                </div>
+                            </div>
+
+                            <div class="form-inline form-group" v-if="editingRule.compareType === 'number'">
+                                <div style="flex:0.5">
+                                    <label>运算符 *</label>
+                                    <select v-model="editingRule.judgeOperator" style="width:100%">
+                                        <option value=">">&gt;</option>
+                                        <option value=">=">&gt;=</option>
+                                        <option value="<">&lt;</option>
+                                        <option value="<=">&lt;=</option>
+                                        <option value="=">=</option>
+                                        <option value="!=">!=</option>
+                                    </select>
+                                </div>
+                                <div style="flex:0.5">
+                                    <label>阈值 *</label>
+                                    <input type="text" v-model="editingRule.judgeValue" placeholder="如：0">
+                                </div>
+                            </div>
+
+                            <div class="form-group" v-if="editingRule.compareType === 'text_equals' || editingRule.compareType === 'text_not_equals'">
+                                <label>比较值 *</label>
+                                <input type="text" v-model="editingRule.judgeValue" placeholder="如：healthy">
+                            </div>
+                        </template>
+
+                        <!-- 多行预警配置 -->
+                        <template v-if="editingRule.judgeType === 'multi'">
+                            <div class="form-group">
+                                <label>唯一标识字段 *</label>
+                                <input type="text" v-model="editingRule.keyField" placeholder="如：id">
+                                <div style="font-size:12px;color:#999;margin-top:5px">
+                                    用于区分不同预警项的属性名，数组每个元素生成一条独立预警
+                                </div>
+                            </div>
+                        </template>
+                    </template>
+                </template>
+
+                <!-- ========== 通用配置 ========== -->
+                <template v-if="selectedDatasourceType">
+                    <div style="background:#f5f5f5;padding:10px;margin:15px 0;border-left:3px solid #999">
+                        <strong>通用配置</strong>
+                    </div>
+
+                    <div class="form-inline form-group">
+                        <div style="flex:1">
+                            <label>预警级别</label>
+                            <select v-model="editingRule.alertLevel" style="width:100%">
+                                <option value="info">信息</option>
+                                <option value="warning">警告</option>
+                                <option value="critical">严重</option>
+                            </select>
+                        </div>
+                        <div style="flex:1">
+                            <label>连续失败N次才预警</label>
+                            <input type="number" v-model="editingRule.failThreshold" min="1">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Cron表达式 *</label>
+                        <input type="text" v-model="editingRule.cronExpression" placeholder="0 */5 * * * ?">
+                        <div style="font-size:12px;color:#999;margin-top:5px">
+                            常用: 每5分钟 <code @click="editingRule.cronExpression='0 */5 * * * ?'" style="cursor:pointer;color:#1890ff">0 */5 * * * ?</code> |
+                            每小时 <code @click="editingRule.cronExpression='0 0 * * * ?'" style="cursor:pointer;color:#1890ff">0 0 * * * ?</code> |
+                            每天9点 <code @click="editingRule.cronExpression='0 0 9 * * ?'" style="cursor:pointer;color:#1890ff">0 0 9 * * ?</code>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>消息模板</label>
+                        <input type="text" v-model="editingRule.alertMessageTemplate" :placeholder="messageTemplatePlaceholder">
+                        <div style="font-size:12px;color:#999;margin-top:5px">
+                            <template v-if="selectedDatasourceType !== 'api'">
+                                通用: {$name}, {$group}, {$threshold}, {$rowCount}<br>
+                                SQL专用: {$table.列名} - 如 {$table.cnt}, {$table.customer_name}
+                            </template>
+                            <template v-else>
+                                通用: {$name}, {$group}, {$threshold}, {$rowCount}<br>
+                                API专用: {$api.statusCode}, {$api.value}, {$api.属性名}
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label><input type="checkbox" v-model="editingRule.enabled"> 启用</label>
+                    </div>
+                </template>
+
+                <div class="modal-footer">
+                    <button class="btn" @click="showRuleModal = false">取消</button>
+                    <button class="btn btn-primary" @click="saveRule">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计配置编辑弹窗 -->
+        <div class="modal-overlay" v-if="showStatModal" @click.self="showStatModal = false">
+            <div class="modal" style="min-width:600px">
+                <div class="modal-header">{{editingStat.id ? '编辑' : '新增'}}统计配置</div>
+
+                <div class="form-group">
+                    <label>统计名称 *</label>
+                    <input type="text" v-model="editingStat.name" placeholder="如：今日订单统计">
+                </div>
+
+                <div class="form-inline form-group">
+                    <div style="flex:1">
+                        <label>所属系统</label>
+                        <select v-model="editingStat.systemId" style="width:100%">
+                            <option value="">无</option>
+                            <option v-for="s in systems" :key="s.id" :value="s.id">{{s.name}}</option>
+                        </select>
+                    </div>
+                    <div style="flex:1">
+                        <label>数据源 *</label>
+                        <select v-model="editingStat.dataSourceId" style="width:100%">
+                            <option value="">请选择</option>
+                            <option v-for="ds in dataSources" :key="ds.id" :value="ds.id">{{ds.name}} ({{ds.type}})</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- SQL数据源 -->
+                <template v-if="statDatasourceType && statDatasourceType !== 'api'">
+                    <div class="form-group">
+                        <label>SQL语句 *</label>
+                        <textarea v-model="editingStat.queryContent" rows="3"
+                            placeholder="SELECT status, COUNT(*) as count FROM orders GROUP BY status"></textarea>
+                    </div>
+                </template>
+
+                <!-- API数据源 -->
+                <template v-if="statDatasourceType === 'api'">
+                    <div class="form-group">
+                        <label>数据路径</label>
+                        <input type="text" v-model="editingStat.dataPath" placeholder="如：data、data.items">
+                        <div style="font-size:12px;color:#999;margin-top:5px">从API返回的JSON中提取数据的路径</div>
+                    </div>
+                </template>
+
+                <div class="form-group">
+                    <label>图表类型 *</label>
+                    <select v-model="editingStat.chartType" style="width:100%">
+                        <option value="table">表格 - 直接展示查询结果</option>
+                        <option value="line">折线图 - 时序数据趋势展示</option>
+                    </select>
+                </div>
+
+                <!-- 表格配置 -->
+                <template v-if="editingStat.chartType === 'table'">
+                    <div style="background:#e6f7ff;padding:10px;margin:15px 0;border-left:3px solid #1890ff">
+                        <strong>表格配置</strong>
+                    </div>
+                    <div class="form-inline form-group">
+                        <div style="flex:1">
+                            <label>最大行数</label>
+                            <input type="number" v-model="editingStat.maxRows" placeholder="20">
+                        </div>
+                        <div style="flex:1">
+                            <label>刷新间隔（秒）</label>
+                            <input type="number" v-model="editingStat.refreshInterval" placeholder="60">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>列标题配置（可选）</label>
+                        <input type="text" v-model="editingStat.displayColumns" placeholder="status:状态,count:数量,total:金额">
+                        <div style="font-size:12px;color:#999;margin-top:5px">格式：字段名:显示名，多个用逗号分隔</div>
+                    </div>
+                </template>
+
+                <!-- 折线图配置 -->
+                <template v-if="editingStat.chartType === 'line'">
+                    <div style="background:#f6ffed;padding:10px;margin:15px 0;border-left:3px solid #52c41a">
+                        <strong>折线图配置</strong>
+                    </div>
+                    <div class="form-inline form-group">
+                        <div style="flex:1">
+                            <label>X轴字段 *</label>
+                            <input type="text" v-model="editingStat.xField" placeholder="如：date, hour">
+                        </div>
+                        <div style="flex:1">
+                            <label>最大数据点</label>
+                            <input type="number" v-model="editingStat.maxPoints" placeholder="30">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Y轴字段 *</label>
+                        <input type="text" v-model="editingStat.yFields" placeholder="如：order_count,total_amount">
+                        <div style="font-size:12px;color:#999;margin-top:5px">多个字段用逗号分隔</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Y轴图例名称</label>
+                        <input type="text" v-model="editingStat.yLabels" placeholder="如：订单数量,订单金额">
+                        <div style="font-size:12px;color:#999;margin-top:5px">与Y轴字段一一对应，用逗号分隔</div>
+                    </div>
+                    <div class="form-group">
+                        <label>刷新间隔（秒）</label>
+                        <input type="number" v-model="editingStat.refreshInterval" placeholder="300">
+                    </div>
+                </template>
+
+                <div class="form-inline form-group">
+                    <div style="flex:1">
+                        <label>排序</label>
+                        <input type="number" v-model="editingStat.sortOrder" placeholder="0">
+                    </div>
+                    <div style="flex:1">
+                        <label style="display:block">&nbsp;</label>
+                        <label><input type="checkbox" v-model="editingStat.enabled"> 启用</label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn" @click="showStatModal = false">取消</button>
+                    <button class="btn btn-primary" @click="saveStat">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计预览弹窗 -->
+        <div class="modal-overlay" v-if="showStatPreview" @click.self="showStatPreview = false">
+            <div class="modal" style="min-width:700px">
+                <div class="modal-header">
+                    统计预览: {{previewingStat.name}}
+                    <span style="font-size:12px;color:#999;margin-left:10px">刷新间隔: {{previewingStat.refreshInterval}}秒</span>
+                </div>
+
+                <!-- 表格预览 -->
+                <div v-if="previewingStat.chartType === 'table'">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th v-for="col in previewTableColumns" :key="col">{{col}}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(row, idx) in previewTableData" :key="idx">
+                                <td v-for="col in previewTableColumns" :key="col">{{row[col]}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 折线图预览 -->
+                <div v-if="previewingStat.chartType === 'line'" style="padding:20px;text-align:center">
+                    <div style="background:#f5f5f5;padding:40px;border-radius:8px">
+                        <div style="font-size:48px;color:#ccc">📈</div>
+                        <div style="margin-top:10px;color:#999">
+                            折线图预览<br>
+                            X轴: {{previewingStat.xField}}<br>
+                            Y轴: {{previewingStat.yFields}}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn" @click="showStatPreview = false">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue
+
+        createApp({
+            setup() {
+                const currentPage = ref('system')
+
+                // ============ 系统管理 ============
+                const systems = ref([
+                    { id: 1, name: '订单中心', sortOrder: 1, enabled: true },
+                    { id: 2, name: '支付中心', sortOrder: 2, enabled: true },
+                    { id: 3, name: '用户中心', sortOrder: 3, enabled: true },
+                ])
+                const showSystemModal = ref(false)
+                const editingSystem = ref({})
+
+                const openSystemModal = (s = null) => {
+                    editingSystem.value = s ? {...s} : { id: 0, name: '', sortOrder: 0, enabled: true }
+                    showSystemModal.value = true
+                }
+
+                const saveSystem = () => {
+                    if (!editingSystem.value.name) {
+                        alert('请填写系统名称')
+                        return
+                    }
+                    if (editingSystem.value.id) {
+                        const idx = systems.value.findIndex(s => s.id === editingSystem.value.id)
+                        if (idx > -1) systems.value[idx] = {...editingSystem.value}
+                    } else {
+                        editingSystem.value.id = Date.now()
+                        systems.value.push({...editingSystem.value})
+                    }
+                    showSystemModal.value = false
+                }
+
+                const deleteSystem = (s) => {
+                    if (confirm(`确定删除系统 "${s.name}"?`)) {
+                        systems.value = systems.value.filter(item => item.id !== s.id)
+                    }
+                }
+
+                const getSystemName = (id) => {
+                    const s = systems.value.find(s => s.id == id)
+                    return s ? s.name : '-'
+                }
+
+                // ============ 数据源管理 ============
+                const dataSources = ref([
+                    { id: 1, name: '业务主库', type: 'mysql', connectionString: 'Server=192.168.1.100;Database=business_db;Uid=root;Pwd=***', apiUrl: '', apiMethod: 'GET', apiHeaders: '', apiBody: '', timeout: 30, enabled: true },
+                    { id: 2, name: '官网健康检查', type: 'api', connectionString: '', apiUrl: 'https://www.example.com/health', apiMethod: 'GET', apiHeaders: '', apiBody: '', timeout: 10, enabled: true },
+                ])
+                const showDatasourceModal = ref(false)
+                const editingDatasource = ref({})
+
+                const openDatasourceModal = (ds = null) => {
+                    editingDatasource.value = ds ? {...ds} : {
+                        id: 0, name: '', type: 'mysql', connectionString: '',
+                        apiUrl: '', apiMethod: 'GET', apiHeaders: '', apiBody: '',
+                        timeout: 30, enabled: true
+                    }
+                    showDatasourceModal.value = true
+                }
+
+                const saveDatasource = () => {
+                    if (!editingDatasource.value.name) {
+                        alert('请填写名称')
+                        return
+                    }
+                    if (editingDatasource.value.id) {
+                        const idx = dataSources.value.findIndex(d => d.id === editingDatasource.value.id)
+                        if (idx > -1) dataSources.value[idx] = {...editingDatasource.value}
+                    } else {
+                        editingDatasource.value.id = Date.now()
+                        dataSources.value.push({...editingDatasource.value})
+                    }
+                    showDatasourceModal.value = false
+                }
+
+                const deleteDatasource = (ds) => {
+                    if (confirm(`确定删除数据源 "${ds.name}"?`)) {
+                        dataSources.value = dataSources.value.filter(d => d.id !== ds.id)
+                    }
+                }
+
+                const testDatasource = (ds) => {
+                    alert(`测试连接 "${ds.name}"...\n\n(模拟) 连接成功!`)
+                }
+
+                // ============ 预警规则 ============
+                const alertRules = ref([
+                    {
+                        id: 1, name: '订单积压预警', systemId: 1, dataSourceId: 1,
+                        queryContent: "SELECT COUNT(*) as cnt FROM orders WHERE status='pending' AND created_at < NOW() - INTERVAL 30 MINUTE",
+                        dataPath: '', apiJudgeLevel: '', compareType: '',
+                        judgeType: 'single', judgeField: 'cnt', judgeOperator: '>', judgeValue: '100',
+                        keyField: '', alertLevel: 'warning',
+                        alertMessageTemplate: '{$name} - 积压 {$table.cnt} 单',
+                        cronExpression: '0 */5 * * * ?', failThreshold: 1, enabled: true
+                    },
+                    {
+                        id: 2, name: '官网健康检查', systemId: '', dataSourceId: 2,
+                        queryContent: '', dataPath: 'data', apiJudgeLevel: 'json', compareType: 'text_not_equals',
+                        judgeType: 'single', judgeField: '', judgeOperator: '', judgeValue: 'healthy',
+                        keyField: '', alertLevel: 'critical',
+                        alertMessageTemplate: '{$name} - 站点访问异常: {$api.value}',
+                        cronExpression: '0 */5 * * * ?', failThreshold: 2, enabled: true
+                    },
+                    {
+                        id: 3, name: '客户操作异常', systemId: 1, dataSourceId: 1,
+                        queryContent: "SELECT error_id, customer_name, error_msg, amount FROM error_logs WHERE status='unresolved'",
+                        dataPath: '', apiJudgeLevel: '', compareType: '',
+                        judgeType: 'multi', judgeField: '', judgeOperator: '', judgeValue: '',
+                        keyField: 'error_id', alertLevel: 'warning',
+                        alertMessageTemplate: '{$table.customer_name} {$table.error_msg}，金额: {$table.amount}元',
+                        cronExpression: '0 */10 * * * ?', failThreshold: 1, enabled: true
+                    },
+                ])
+                const showRuleModal = ref(false)
+                const editingRule = ref({})
+                const ruleFilterSystem = ref('')
+
+                const filteredRules = computed(() => {
+                    if (!ruleFilterSystem.value) return alertRules.value
+                    return alertRules.value.filter(r => r.systemId == ruleFilterSystem.value)
+                })
+
+                const selectedDatasourceType = computed(() => {
+                    const ds = dataSources.value.find(d => d.id == editingRule.value.dataSourceId)
+                    return ds ? ds.type : ''
+                })
+
+                const messageTemplatePlaceholder = computed(() => {
+                    if (selectedDatasourceType.value === 'api') {
+                        return '{$name} - 状态异常: {$api.value}'
+                    }
+                    return '{$name} - 当前值: {$table.cnt}'
+                })
+
+                const openRuleModal = (r = null) => {
+                    editingRule.value = r ? {...r} : {
+                        id: 0, name: '', systemId: '', dataSourceId: '',
+                        queryContent: '', dataPath: 'data', apiJudgeLevel: 'request', compareType: 'number',
+                        judgeType: 'single', judgeField: '', judgeOperator: '>', judgeValue: '',
+                        keyField: '', alertLevel: 'warning',
+                        alertMessageTemplate: '',
+                        cronExpression: '0 */5 * * * ?', failThreshold: 1, enabled: true
+                    }
+                    showRuleModal.value = true
+                }
+
+                const saveRule = () => {
+                    if (!editingRule.value.name) {
+                        alert('请填写规则名称')
+                        return
+                    }
+                    if (!editingRule.value.dataSourceId) {
+                        alert('请选择数据源')
+                        return
+                    }
+                    if (editingRule.value.id) {
+                        const idx = alertRules.value.findIndex(r => r.id === editingRule.value.id)
+                        if (idx > -1) alertRules.value[idx] = {...editingRule.value}
+                    } else {
+                        editingRule.value.id = Date.now()
+                        alertRules.value.push({...editingRule.value})
+                    }
+                    showRuleModal.value = false
+                }
+
+                const deleteRule = (r) => {
+                    if (confirm(`确定删除规则 "${r.name}"?`)) {
+                        alertRules.value = alertRules.value.filter(item => item.id !== r.id)
+                    }
+                }
+
+                const getDatasourceName = (id) => {
+                    const ds = dataSources.value.find(d => d.id == id)
+                    return ds ? ds.name : '-'
+                }
+
+                const getRuleName = (id) => {
+                    const r = alertRules.value.find(r => r.id == id)
+                    return r ? r.name : '-'
+                }
+
+                const levelText = (level) => {
+                    return { info: '信息', warning: '警告', critical: '严重' }[level] || level
+                }
+
+                // ============ 统计配置 ============
+                const statConfigs = ref([
+                    {
+                        id: 1, name: '今日订单统计', systemId: 1, dataSourceId: 1,
+                        queryContent: "SELECT status, COUNT(*) as count, SUM(amount) as total FROM orders WHERE DATE(created_at) = CURDATE() GROUP BY status",
+                        dataPath: '', chartType: 'table',
+                        displayColumns: 'status:状态,count:数量,total:金额', maxRows: 20,
+                        xField: '', yFields: '', yLabels: '', maxPoints: 30,
+                        refreshInterval: 60, sortOrder: 1, enabled: true
+                    },
+                    {
+                        id: 2, name: '近7日订单趋势', systemId: 1, dataSourceId: 1,
+                        queryContent: "SELECT DATE(created_at) as date, COUNT(*) as order_count, SUM(amount) as total_amount FROM orders WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY DATE(created_at) ORDER BY date",
+                        dataPath: '', chartType: 'line',
+                        displayColumns: '', maxRows: 20,
+                        xField: 'date', yFields: 'order_count,total_amount', yLabels: '订单数量,订单金额', maxPoints: 30,
+                        refreshInterval: 300, sortOrder: 2, enabled: true
+                    },
+                    {
+                        id: 3, name: '服务器资源监控', systemId: '', dataSourceId: 2,
+                        queryContent: '',
+                        dataPath: 'data', chartType: 'table',
+                        displayColumns: '', maxRows: 10,
+                        xField: '', yFields: '', yLabels: '', maxPoints: 30,
+                        refreshInterval: 30, sortOrder: 3, enabled: true
+                    },
+                ])
+                const showStatModal = ref(false)
+                const editingStat = ref({})
+                const statFilterSystem = ref('')
+
+                const filteredStats = computed(() => {
+                    if (!statFilterSystem.value) return statConfigs.value
+                    return statConfigs.value.filter(s => s.systemId == statFilterSystem.value)
+                })
+
+                const statDatasourceType = computed(() => {
+                    const ds = dataSources.value.find(d => d.id == editingStat.value.dataSourceId)
+                    return ds ? ds.type : ''
+                })
+
+                const openStatModal = (s = null) => {
+                    editingStat.value = s ? {...s} : {
+                        id: 0, name: '', systemId: '', dataSourceId: '',
+                        queryContent: '', dataPath: 'data', chartType: 'table',
+                        displayColumns: '', maxRows: 20,
+                        xField: '', yFields: '', yLabels: '', maxPoints: 30,
+                        refreshInterval: 60, sortOrder: 0, enabled: true
+                    }
+                    showStatModal.value = true
+                }
+
+                const saveStat = () => {
+                    if (!editingStat.value.name) {
+                        alert('请填写统计名称')
+                        return
+                    }
+                    if (!editingStat.value.dataSourceId) {
+                        alert('请选择数据源')
+                        return
+                    }
+                    if (editingStat.value.id) {
+                        const idx = statConfigs.value.findIndex(s => s.id === editingStat.value.id)
+                        if (idx > -1) statConfigs.value[idx] = {...editingStat.value}
+                    } else {
+                        editingStat.value.id = Date.now()
+                        statConfigs.value.push({...editingStat.value})
+                    }
+                    showStatModal.value = false
+                }
+
+                const deleteStat = (s) => {
+                    if (confirm(`确定删除统计配置 "${s.name}"?`)) {
+                        statConfigs.value = statConfigs.value.filter(item => item.id !== s.id)
+                    }
+                }
+
+                // 统计预览
+                const showStatPreview = ref(false)
+                const previewingStat = ref({})
+                const previewTableColumns = ref([])
+                const previewTableData = ref([])
+
+                const previewStat = (s) => {
+                    previewingStat.value = {...s}
+                    // 模拟表格数据
+                    if (s.chartType === 'table') {
+                        if (s.id === 1) {
+                            previewTableColumns.value = ['状态', '数量', '金额']
+                            previewTableData.value = [
+                                { '状态': '待支付', '数量': 156, '金额': '¥45,320' },
+                                { '状态': '已支付', '数量': 892, '金额': '¥234,560' },
+                                { '状态': '已完成', '数量': 1245, '金额': '¥456,780' },
+                            ]
+                        } else {
+                            previewTableColumns.value = ['服务器', 'CPU', '内存', '磁盘']
+                            previewTableData.value = [
+                                { '服务器': 'Web-01', 'CPU': '45%', '内存': '62%', '磁盘': '78%' },
+                                { '服务器': 'Web-02', 'CPU': '38%', '内存': '55%', '磁盘': '72%' },
+                                { '服务器': 'DB-01', 'CPU': '67%', '内存': '82%', '磁盘': '45%' },
+                            ]
+                        }
+                    }
+                    showStatPreview.value = true
+                }
+
+                // ============ 预警结果 ============
+                const currentAlerts = ref([
+                    {
+                        id: 1, ruleId: 1, alertKey: '', level: 'warning', status: 'active',
+                        message: '订单积压预警 - 积压 156 单',
+                        triggerCount: 3, firstTriggerTime: '2024-01-15 09:00:00', lastTriggerTime: '2024-01-15 09:15:00'
+                    },
+                    {
+                        id: 2, ruleId: 2, alertKey: '', level: 'critical', status: 'active',
+                        message: '官网健康检查 - 站点访问异常: timeout',
+                        triggerCount: 5, firstTriggerTime: '2024-01-15 08:30:00', lastTriggerTime: '2024-01-15 09:10:00'
+                    },
+                    {
+                        id: 3, ruleId: 3, alertKey: 'ERR001', level: 'warning', status: 'processing',
+                        message: '张三 支付失败，金额: 1200元',
+                        triggerCount: 1, firstTriggerTime: '2024-01-15 08:45:00', lastTriggerTime: '2024-01-15 08:45:00'
+                    },
+                    {
+                        id: 4, ruleId: 3, alertKey: 'ERR002', level: 'warning', status: 'active',
+                        message: '李四 余额不足，金额: 500元',
+                        triggerCount: 2, firstTriggerTime: '2024-01-15 09:00:00', lastTriggerTime: '2024-01-15 09:05:00'
+                    },
+                    {
+                        id: 5, ruleId: 1, alertKey: '', level: 'warning', status: 'recovered',
+                        message: '订单积压预警 - 积压 120 单',
+                        triggerCount: 2, firstTriggerTime: '2024-01-14 14:00:00', lastTriggerTime: '2024-01-14 14:10:00'
+                    },
+                ])
+                const alertFilterStatus = ref('')
+                const alertFilterLevel = ref('')
+                const alertFilterRule = ref('')
+                const alertFilterSystem = ref('')
+
+                const activeAlertCount = computed(() => {
+                    return currentAlerts.value.filter(a => a.status === 'active').length
+                })
+
+                const filteredAlerts = computed(() => {
+                    let result = currentAlerts.value
+                    if (alertFilterStatus.value) {
+                        result = result.filter(a => a.status === alertFilterStatus.value)
+                    }
+                    if (alertFilterLevel.value) {
+                        result = result.filter(a => a.level === alertFilterLevel.value)
+                    }
+                    if (alertFilterRule.value) {
+                        result = result.filter(a => a.ruleId == alertFilterRule.value)
+                    }
+                    if (alertFilterSystem.value) {
+                        const ruleIds = alertRules.value.filter(r => r.systemId == alertFilterSystem.value).map(r => r.id)
+                        result = result.filter(a => ruleIds.includes(a.ruleId))
+                    }
+                    return result
+                })
+
+                const statusText = (status) => {
+                    return { active: '待处理', processing: '处理中', recovered: '已恢复' }[status] || status
+                }
+
+                const statusTagClass = (status) => {
+                    return { active: 'tag-critical', processing: 'tag-warning', recovered: 'tag-success' }[status] || 'tag-default'
+                }
+
+                const markProcessing = (a) => {
+                    a.status = 'processing'
+                }
+
+                const markRecovered = (a) => {
+                    a.status = 'recovered'
+                }
+
+                const ignoreAlert = (a) => {
+                    const reason = prompt('请输入忽略原因（可选）：')
+                    if (reason !== null) {
+                        // 添加到已忽略列表
+                        ignoredAlerts.value.push({
+                            id: Date.now(),
+                            ruleId: a.ruleId,
+                            alertKey: a.alertKey,
+                            ignoredReason: reason || '',
+                            ignoredAt: new Date().toLocaleString('zh-CN')
+                        })
+                        // 从当前预警中移除
+                        currentAlerts.value = currentAlerts.value.filter(item => item.id !== a.id)
+                    }
+                }
+
+                const refreshAlerts = () => {
+                    alert('已刷新预警列表!')
+                }
+
+                // ============ 已忽略预警 ============
+                const ignoredAlerts = ref([
+                    { id: 1, ruleId: 1, alertKey: 'order_123', ignoredReason: '测试数据，无需处理', ignoredAt: '2024-01-15 10:30:00' },
+                ])
+
+                const cancelIgnore = (ia) => {
+                    if (confirm('确定取消忽略该预警?')) {
+                        ignoredAlerts.value = ignoredAlerts.value.filter(item => item.id !== ia.id)
+                    }
+                }
+
+                // ============ 系统设置 ============
+                const settings = ref({
+                    dbConnection: 'Server=localhost;Database=alert_db;Uid=root;Pwd=123456;',
+                    defaultTimeout: 30,
+                    refreshInterval: 60,
+                    autoStart: true
+                })
+
+                const saveSettings = () => {
+                    alert('设置已保存!')
+                }
+
+                return {
+                    currentPage,
+                    // 系统
+                    systems, showSystemModal, editingSystem,
+                    openSystemModal, saveSystem, deleteSystem, getSystemName,
+                    // 数据源
+                    dataSources, showDatasourceModal, editingDatasource,
+                    openDatasourceModal, saveDatasource, deleteDatasource, testDatasource,
+                    // 规则
+                    alertRules, showRuleModal, editingRule, ruleFilterSystem,
+                    filteredRules, selectedDatasourceType, messageTemplatePlaceholder,
+                    openRuleModal, saveRule, deleteRule,
+                    getDatasourceName, getRuleName, levelText,
+                    // 统计配置
+                    statConfigs, showStatModal, editingStat, statFilterSystem,
+                    filteredStats, statDatasourceType,
+                    openStatModal, saveStat, deleteStat,
+                    showStatPreview, previewingStat, previewTableColumns, previewTableData,
+                    previewStat,
+                    // 预警结果
+                    currentAlerts, alertFilterStatus, alertFilterLevel, alertFilterRule, alertFilterSystem,
+                    activeAlertCount, filteredAlerts, statusText, statusTagClass,
+                    markProcessing, markRecovered, ignoreAlert, refreshAlerts,
+                    // 忽略
+                    ignoredAlerts, cancelIgnore,
+                    // 设置
+                    settings, saveSettings
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

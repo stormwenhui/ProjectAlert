@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目监控 - WPF展示端原型</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            font-size: 13px;
+            background: #e0e5ec;
+            min-height: 100vh;
+            padding: 30px;
+        }
+
+        /* 页面说明 */
+        .page-info {
+            max-width: 1200px;
+            margin: 0 auto 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .page-info h1 { font-size: 18px; margin-bottom: 10px; color: #333; }
+        .page-info p { color: #666; line-height: 1.6; }
+        .page-info .tips {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #e6f7ff;
+            border-left: 3px solid #1890ff;
+            font-size: 12px;
+        }
+
+        /* 原型展示区 */
+        .prototype-area {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* 悬浮窗容器 */
+        .floating-window {
+            background: rgba(30, 30, 35, 0.92);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            color: #fff;
+            overflow: hidden;
+            min-width: 280px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* 标题栏 */
+        .window-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 15px;
+            background: rgba(255,255,255,0.05);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            cursor: move;
+        }
+        .window-header .title {
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .window-header .title .icon {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        .window-controls {
+            display: flex;
+            gap: 8px;
+        }
+        .window-controls .ctrl-btn {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .window-controls .ctrl-btn:hover { opacity: 0.8; }
+        .ctrl-btn.minimize { background: #ffbd2e; }
+        .ctrl-btn.pin { background: #27c93f; }
+        .ctrl-btn.close { background: #ff5f57; }
+
+        /* 概览模式 */
+        .overview-mode {
+            padding: 20px;
+            text-align: center;
+        }
+        .alert-summary {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-bottom: 15px;
+        }
+        .alert-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .alert-item:hover { transform: scale(1.05); }
+        .alert-item .count {
+            font-size: 28px;
+            font-weight: bold;
+            line-height: 1;
+        }
+        .alert-item .label {
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            margin-top: 5px;
+        }
+        .alert-item .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-bottom: 8px;
+        }
+        .alert-item.critical .count { color: #ff5f57; }
+        .alert-item.critical .dot { background: #ff5f57; box-shadow: 0 0 10px #ff5f57; }
+        .alert-item.warning .count { color: #ffbd2e; }
+        .alert-item.warning .dot { background: #ffbd2e; box-shadow: 0 0 10px #ffbd2e; }
+        .alert-item.info .count { color: #28c7fa; }
+        .alert-item.info .dot { background: #28c7fa; box-shadow: 0 0 10px #28c7fa; }
+
+        .no-alert {
+            padding: 30px 20px;
+            text-align: center;
+            color: rgba(255,255,255,0.6);
+        }
+        .no-alert .icon { font-size: 32px; margin-bottom: 10px; }
+        .no-alert .text { font-size: 14px; color: #27c93f; }
+
+        .expand-hint {
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+            cursor: pointer;
+        }
+        .expand-hint:hover { color: rgba(255,255,255,0.6); }
+
+        /* 列表模式 */
+        .list-mode {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .list-mode::-webkit-scrollbar { width: 6px; }
+        .list-mode::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        .list-mode::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+        .alert-group {
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .alert-group:last-child { border-bottom: none; }
+
+        .group-header {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            background: rgba(255,255,255,0.03);
+            cursor: pointer;
+            user-select: none;
+        }
+        .group-header:hover { background: rgba(255,255,255,0.05); }
+        .group-header .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        .group-header .level-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .group-header .count-badge {
+            background: rgba(255,255,255,0.15);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+        .group-header .arrow {
+            margin-left: 10px;
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+        .group-header.expanded .arrow { transform: rotate(90deg); }
+
+        .alert-list {
+            padding: 0 10px 10px 10px;
+        }
+        .alert-entry {
+            padding: 10px 12px;
+            margin-top: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .alert-entry:hover { background: rgba(255,255,255,0.08); }
+        .alert-entry.processing { border-left: 3px solid #ffbd2e; }
+
+        .alert-entry .message {
+            font-size: 13px;
+            line-height: 1.4;
+            margin-bottom: 6px;
+        }
+        .alert-entry .meta {
+            display: flex;
+            gap: 15px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+        }
+        .alert-entry .meta span { display: flex; align-items: center; gap: 3px; }
+
+        /* 模式切换标签 */
+        .mode-tabs {
+            display: flex;
+            background: rgba(255,255,255,0.05);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .mode-tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: rgba(255,255,255,0.5);
+        }
+        .mode-tab:hover { background: rgba(255,255,255,0.05); }
+        .mode-tab.active {
+            color: #fff;
+            background: rgba(255,255,255,0.08);
+            border-bottom: 2px solid #667eea;
+        }
+
+        /* 统计视图 */
+        .stats-mode {
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        .stat-card:last-child { margin-bottom: 0; }
+        .stat-card .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .stat-card .card-title {
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .stat-card .refresh-time {
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+        }
+        .stat-card .card-body {
+            padding: 12px;
+        }
+
+        /* 统计表格 */
+        .stat-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .stat-table th {
+            text-align: left;
+            padding: 8px 10px;
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.7);
+            font-weight: normal;
+        }
+        .stat-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .stat-table tr:last-child td { border-bottom: none; }
+        .stat-table .num { text-align: right; font-family: 'Consolas', monospace; }
+
+        /* 折线图占位 */
+        .chart-placeholder {
+            height: 120px;
+            background: linear-gradient(180deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.02) 100%);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,0.4);
+        }
+        .chart-placeholder svg {
+            width: 100%;
+            height: 80px;
+        }
+        .chart-placeholder .legend {
+            display: flex;
+            gap: 15px;
+            margin-top: 8px;
+            font-size: 11px;
+        }
+        .chart-placeholder .legend span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .chart-placeholder .legend .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        /* 右键菜单 */
+        .context-menu {
+            position: fixed;
+            background: rgba(40, 40, 45, 0.98);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 6px 0;
+            min-width: 150px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            z-index: 1000;
+        }
+        .context-menu .menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+        }
+        .context-menu .menu-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .context-menu .menu-item.danger { color: #ff5f57; }
+        .context-menu .menu-divider {
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+            margin: 6px 0;
+        }
+
+        /* 状态栏 */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 15px;
+            background: rgba(255,255,255,0.03);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+        }
+        .status-bar .status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-bar .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #27c93f;
+        }
+        .status-bar .status-dot.error { background: #ff5f57; }
+
+        /* 设置面板 */
+        .settings-panel {
+            padding: 15px;
+        }
+        .setting-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .setting-item:last-child { border-bottom: none; }
+        .setting-item .label {
+            font-size: 13px;
+        }
+        .setting-item .desc {
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+            margin-top: 3px;
+        }
+
+        /* 开关组件 */
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 12px;
+            cursor: pointer;
+            position: relative;
+            transition: background 0.3s;
+        }
+        .toggle-switch.active {
+            background: #667eea;
+        }
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s;
+        }
+        .toggle-switch.active::after {
+            transform: translateX(20px);
+        }
+
+        /* 分组筛选 */
+        .filter-bar {
+            display: flex;
+            gap: 8px;
+            padding: 10px 15px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            overflow-x: auto;
+        }
+        .filter-tag {
+            padding: 4px 12px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .filter-tag:hover { background: rgba(255,255,255,0.12); }
+        .filter-tag.active {
+            background: #667eea;
+            color: white;
+        }
+
+        /* 搜索框 */
+        .search-bar {
+            padding: 10px 15px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .search-input-wrapper {
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.08);
+            border-radius: 6px;
+            padding: 6px 10px;
+            gap: 8px;
+        }
+        .search-input-wrapper .search-icon {
+            color: rgba(255,255,255,0.4);
+            font-size: 14px;
+        }
+        .search-input-wrapper input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-size: 12px;
+        }
+        .search-input-wrapper input::placeholder {
+            color: rgba(255,255,255,0.4);
+        }
+        .search-input-wrapper .clear-btn {
+            color: rgba(255,255,255,0.4);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 2px;
+        }
+        .search-input-wrapper .clear-btn:hover {
+            color: rgba(255,255,255,0.7);
+        }
+
+        /* 可展开的概览模式 */
+        .expandable-overview {
+            transition: all 0.3s ease;
+        }
+        .overview-collapsed {
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+        }
+        .overview-collapsed:hover {
+            background: rgba(255,255,255,0.03);
+        }
+
+        /* 原型说明标签 */
+        .prototype-label {
+            text-align: center;
+            padding: 10px;
+            font-size: 12px;
+            color: #666;
+            background: #f5f5f5;
+            border-radius: 0 0 8px 8px;
+        }
+
+        /* ========== 主窗体样式 ========== */
+        .main-window {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            overflow: hidden;
+            border: 1px solid #e0e0e0;
+        }
+        .main-window-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+        .main-window-header .title {
+            font-size: 15px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .main-window-header .title .icon {
+            width: 24px;
+            height: 24px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .main-window-controls {
+            display: flex;
+            gap: 8px;
+        }
+        .main-window-controls .ctrl-btn {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .main-window-body {
+            padding: 20px;
+        }
+
+        /* 工具列表 */
+        .tool-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .tool-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            transition: all 0.2s;
+        }
+        .tool-item:hover {
+            background: #f0f2f5;
+            border-color: #667eea;
+        }
+        .tool-item .tool-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .tool-item .tool-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 18px;
+        }
+        .tool-item .tool-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+        }
+        .tool-item .tool-desc {
+            font-size: 12px;
+            color: #888;
+            margin-top: 2px;
+        }
+        .tool-item .tool-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .tool-item .tool-status {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            background: #e8f5e9;
+            color: #4caf50;
+        }
+        .tool-item .tool-status.stopped {
+            background: #fafafa;
+            color: #999;
+        }
+        .tool-btn {
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+        .tool-btn.primary {
+            background: #667eea;
+            color: #fff;
+        }
+        .tool-btn.primary:hover {
+            background: #5a6fd6;
+        }
+        .tool-btn.secondary {
+            background: #f0f0f0;
+            color: #666;
+        }
+        .tool-btn.secondary:hover {
+            background: #e0e0e0;
+        }
+
+        /* 主窗体底部 */
+        .main-window-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: #fafafa;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #888;
+        }
+        .main-window-footer .footer-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .main-window-footer .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+        }
+        .main-window-footer .footer-actions {
+            display: flex;
+            gap: 15px;
+        }
+        .main-window-footer .footer-actions a {
+            color: #667eea;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .main-window-footer .footer-actions a:hover {
+            text-decoration: underline;
+        }
+
+        /* ========== 托盘菜单样式 ========== */
+        .tray-menu {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            padding: 6px 0;
+            min-width: 180px;
+            border: 1px solid #e0e0e0;
+        }
+        .tray-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            font-size: 13px;
+            color: #333;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .tray-menu-item:hover {
+            background: #f5f5f5;
+        }
+        .tray-menu-item .menu-icon {
+            width: 18px;
+            text-align: center;
+            color: #666;
+        }
+        .tray-menu-item.danger {
+            color: #f44336;
+        }
+        .tray-menu-item.danger .menu-icon {
+            color: #f44336;
+        }
+        .tray-menu-divider {
+            height: 1px;
+            background: #eee;
+            margin: 6px 0;
+        }
+        .tray-menu-header {
+            padding: 10px 16px;
+            font-size: 12px;
+            color: #999;
+            border-bottom: 1px solid #eee;
+        }
+
+        /* 托盘图标示意 */
+        .tray-icon-demo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: #2d2d2d;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .tray-icon-demo .taskbar-icons {
+            display: flex;
+            gap: 12px;
+            margin-left: auto;
+        }
+        .tray-icon-demo .tray-icon {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 10px;
+            cursor: pointer;
+        }
+        .tray-icon-demo .tray-icon.has-alert {
+            position: relative;
+        }
+        .tray-icon-demo .tray-icon.has-alert::after {
+            content: '';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 8px;
+            height: 8px;
+            background: #ff5f57;
+            border-radius: 50%;
+            border: 1px solid #2d2d2d;
+        }
+        .tray-icon-demo .other-icon {
+            width: 16px;
+            height: 16px;
+            background: #555;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 页面说明 -->
+        <div class="page-info">
+            <h1>WPF 展示端产品原型</h1>
+            <p>项目监控系统的桌面客户端，以悬浮窗形式固定在桌面，实时显示预警信息和统计数据。</p>
+            <div class="tips">
+                <strong>交互说明：</strong>
+                点击概览区域展开列表 | 右键点击预警项查看操作菜单 | 点击标签页切换视图模式
+            </div>
+        </div>
+
+        <!-- 原型展示区 -->
+        <div class="prototype-area">
+
+            <!-- ========== 主窗体 ========== -->
+            <div>
+                <div class="main-window" style="width: 420px;">
+                    <div class="main-window-header">
+                        <div class="title">
+                            <span class="icon">M</span>
+                            项目监控
+                        </div>
+                        <div class="main-window-controls">
+                            <div class="ctrl-btn minimize" style="background:#ffbd2e" title="最小化到托盘"></div>
+                            <div class="ctrl-btn close" style="background:#ff5f57" title="最小化到托盘"></div>
+                        </div>
+                    </div>
+                    <div class="main-window-body">
+                        <div class="tool-list">
+                            <!-- 工具1：预警悬浮窗 -->
+                            <div class="tool-item">
+                                <div class="tool-info">
+                                    <div class="tool-icon">&#9888;</div>
+                                    <div>
+                                        <div class="tool-name">预警监控</div>
+                                        <div class="tool-desc">实时显示预警信息的桌面悬浮窗</div>
+                                    </div>
+                                </div>
+                                <div class="tool-actions">
+                                    <span class="tool-status">运行中</span>
+                                    <button class="tool-btn secondary">停止</button>
+                                </div>
+                            </div>
+                            <!-- 工具2：统计悬浮窗 -->
+                            <div class="tool-item">
+                                <div class="tool-info">
+                                    <div class="tool-icon">&#128200;</div>
+                                    <div>
+                                        <div class="tool-name">数据统计</div>
+                                        <div class="tool-desc">实时显示统计数据和图表</div>
+                                    </div>
+                                </div>
+                                <div class="tool-actions">
+                                    <span class="tool-status">运行中</span>
+                                    <button class="tool-btn secondary">停止</button>
+                                </div>
+                            </div>
+                            <!-- 工具3：完整面板 -->
+                            <div class="tool-item">
+                                <div class="tool-info">
+                                    <div class="tool-icon">&#9881;</div>
+                                    <div>
+                                        <div class="tool-name">完整面板</div>
+                                        <div class="tool-desc">包含概览、列表、统计、设置的完整窗口</div>
+                                    </div>
+                                </div>
+                                <div class="tool-actions">
+                                    <span class="tool-status stopped">已停止</span>
+                                    <button class="tool-btn primary">启动</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="main-window-footer">
+                        <div class="footer-status">
+                            <div class="status-dot"></div>
+                            <span>服务运行中</span>
+                        </div>
+                        <div class="footer-actions">
+                            <a>打开管理端</a>
+                            <a>设置</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="prototype-label">主窗体 - 工具管理</div>
+            </div>
+
+            <!-- ========== 托盘图标和右键菜单 ========== -->
+            <div>
+                <div style="width: 280px;">
+                    <!-- 任务栏托盘示意 -->
+                    <div class="tray-icon-demo">
+                        <span style="color:#999;font-size:11px;">任务栏托盘区</span>
+                        <div class="taskbar-icons">
+                            <div class="other-icon"></div>
+                            <div class="other-icon"></div>
+                            <div class="tray-icon has-alert" title="项目监控（有预警）">M</div>
+                        </div>
+                    </div>
+                    <!-- 托盘右键菜单 -->
+                    <div class="tray-menu">
+                        <div class="tray-menu-header">项目监控 v1.0.0</div>
+                        <div class="tray-menu-item">
+                            <span class="menu-icon">&#128194;</span>
+                            <span>打开主窗口</span>
+                        </div>
+                        <div class="tray-menu-item">
+                            <span class="menu-icon">&#127760;</span>
+                            <span>打开管理端</span>
+                        </div>
+                        <div class="tray-menu-divider"></div>
+                        <div class="tray-menu-item">
+                            <span class="menu-icon">&#9654;</span>
+                            <span>启动所有工具</span>
+                        </div>
+                        <div class="tray-menu-item">
+                            <span class="menu-icon">&#9208;</span>
+                            <span>暂停所有任务</span>
+                        </div>
+                        <div class="tray-menu-item">
+                            <span class="menu-icon">&#128260;</span>
+                            <span>刷新数据</span>
+                        </div>
+                        <div class="tray-menu-divider"></div>
+                        <div class="tray-menu-item">
+                            <span class="menu-icon">&#9881;</span>
+                            <span>设置</span>
+                        </div>
+                        <div class="tray-menu-divider"></div>
+                        <div class="tray-menu-item danger">
+                            <span class="menu-icon">&#10005;</span>
+                            <span>退出程序</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="prototype-label">托盘图标 - 右键菜单</div>
+            </div>
+
+            <!-- ========== 悬浮窗 - 可展开模式（概览+列表合并） ========== -->
+            <div>
+                <div class="floating-window" style="width: 360px;">
+                    <div class="window-header">
+                        <div class="title">
+                            <span class="icon">M</span>
+                            项目监控
+                        </div>
+                        <div class="window-controls">
+                            <div class="ctrl-btn minimize" title="最小化"></div>
+                            <div class="ctrl-btn pin" title="置顶"></div>
+                            <div class="ctrl-btn close" title="关闭"></div>
+                        </div>
+                    </div>
+
+                    <!-- 概览区域（可点击展开） -->
+                    <div class="overview-collapsed" @click="isExpanded = !isExpanded">
+                        <div class="alert-summary">
+                            <div class="alert-item critical">
+                                <div class="dot"></div>
+                                <div class="count">2</div>
+                                <div class="label">严重</div>
+                            </div>
+                            <div class="alert-item warning">
+                                <div class="dot"></div>
+                                <div class="count">5</div>
+                                <div class="label">警告</div>
+                            </div>
+                            <div class="alert-item info">
+                                <div class="dot"></div>
+                                <div class="count">3</div>
+                                <div class="label">信息</div>
+                            </div>
+                        </div>
+                        <div class="expand-hint">{{ isExpanded ? '点击收起 ‹' : '点击展开详情 ›' }}</div>
+                    </div>
+
+                    <!-- 展开后显示的内容 -->
+                    <template v-if="isExpanded">
+                        <!-- 搜索框 -->
+                        <div class="search-bar">
+                            <div class="search-input-wrapper">
+                                <span class="search-icon">&#128269;</span>
+                                <input type="text" v-model="searchKeyword" placeholder="搜索预警内容..." />
+                                <span class="clear-btn" v-if="searchKeyword" @click.stop="searchKeyword = ''">&#10005;</span>
+                            </div>
+                        </div>
+
+                        <!-- 分组筛选 -->
+                        <div class="filter-bar">
+                            <div class="filter-tag" :class="{active: activeFilter === 'all'}" @click.stop="activeFilter = 'all'">全部</div>
+                            <div class="filter-tag" :class="{active: activeFilter === 'order'}" @click.stop="activeFilter = 'order'">订单业务</div>
+                            <div class="filter-tag" :class="{active: activeFilter === 'payment'}" @click.stop="activeFilter = 'payment'">支付业务</div>
+                            <div class="filter-tag" :class="{active: activeFilter === 'user'}" @click.stop="activeFilter = 'user'">用户中心</div>
+                        </div>
+
+                        <div class="list-mode">
+                            <!-- 严重级别 -->
+                            <div class="alert-group">
+                                <div class="group-header expanded" @click.stop="toggleGroup('critical')">
+                                    <div class="dot" style="background:#ff5f57"></div>
+                                    <div class="level-name">严重</div>
+                                    <div class="count-badge">2</div>
+                                    <div class="arrow">›</div>
+                                </div>
+                                <div class="alert-list">
+                                    <div class="alert-entry" @contextmenu.prevent="showContextMenu($event, 1)">
+                                        <div class="message">官网健康检查 - 站点无法访问 (状态码: 502)</div>
+                                        <div class="meta">
+                                            <span>首次: 09:30</span>
+                                            <span>最后: 10:45</span>
+                                            <span>累计 15次</span>
+                                        </div>
+                                    </div>
+                                    <div class="alert-entry" @contextmenu.prevent="showContextMenu($event, 2)">
+                                        <div class="message">支付接口检测 - 响应超时</div>
+                                        <div class="meta">
+                                            <span>首次: 10:00</span>
+                                            <span>最后: 10:15</span>
+                                            <span>累计 3次</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 警告级别 -->
+                            <div class="alert-group">
+                                <div class="group-header expanded" @click.stop="toggleGroup('warning')">
+                                    <div class="dot" style="background:#ffbd2e"></div>
+                                    <div class="level-name">警告</div>
+                                    <div class="count-badge">5</div>
+                                    <div class="arrow">›</div>
+                                </div>
+                                <div class="alert-list">
+                                    <div class="alert-entry processing" @contextmenu.prevent="showContextMenu($event, 3)">
+                                        <div class="message">订单积压预警 - 积压 1523 单</div>
+                                        <div class="meta">
+                                            <span>首次: 08:00</span>
+                                            <span>最后: 10:40</span>
+                                            <span>累计 8次</span>
+                                            <span style="color:#ffbd2e">处理中</span>
+                                        </div>
+                                    </div>
+                                    <div class="alert-entry" @contextmenu.prevent="showContextMenu($event, 4)">
+                                        <div class="message">张三 支付超时，金额: 500元</div>
+                                        <div class="meta">
+                                            <span>首次: 09:30</span>
+                                            <span>最后: 10:45</span>
+                                            <span>累计 5次</span>
+                                        </div>
+                                    </div>
+                                    <div class="alert-entry" @contextmenu.prevent="showContextMenu($event, 5)">
+                                        <div class="message">李四 余额不足，金额: 200元</div>
+                                        <div class="meta">
+                                            <span>首次: 10:00</span>
+                                            <span>最后: 10:30</span>
+                                            <span>累计 2次</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 信息级别 -->
+                            <div class="alert-group">
+                                <div class="group-header" @click.stop="toggleGroup('info')">
+                                    <div class="dot" style="background:#28c7fa"></div>
+                                    <div class="level-name">信息</div>
+                                    <div class="count-badge">3</div>
+                                    <div class="arrow">›</div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="status-bar">
+                        <div class="status">
+                            <div class="status-dot"></div>
+                            运行中
+                        </div>
+                        <div>刷新: 60s | 09:45:30</div>
+                    </div>
+                </div>
+                <div class="prototype-label">可展开模式 - 概览+列表</div>
+            </div>
+
+            <!-- ========== 悬浮窗 - 无预警 ========== -->
+            <div>
+                <div class="floating-window" style="width: 280px;">
+                    <div class="window-header">
+                        <div class="title">
+                            <span class="icon">M</span>
+                            项目监控
+                        </div>
+                        <div class="window-controls">
+                            <div class="ctrl-btn minimize"></div>
+                            <div class="ctrl-btn pin"></div>
+                            <div class="ctrl-btn close"></div>
+                        </div>
+                    </div>
+                    <div class="no-alert">
+                        <div class="icon">&#10003;</div>
+                        <div class="text">一切正常</div>
+                    </div>
+                    <div class="status-bar">
+                        <div class="status">
+                            <div class="status-dot"></div>
+                            运行中
+                        </div>
+                        <div>刷新: 60s | 09:45:30</div>
+                    </div>
+                </div>
+                <div class="prototype-label">概览模式 - 无预警</div>
+            </div>
+
+            <!-- ========== 悬浮窗 - 带Tab切换 ========== -->
+            <div>
+                <div class="floating-window" style="width: 380px;">
+                    <div class="window-header">
+                        <div class="title">
+                            <span class="icon">M</span>
+                            项目监控
+                        </div>
+                        <div class="window-controls">
+                            <div class="ctrl-btn minimize"></div>
+                            <div class="ctrl-btn pin"></div>
+                            <div class="ctrl-btn close"></div>
+                        </div>
+                    </div>
+
+                    <!-- Tab切换 -->
+                    <div class="mode-tabs">
+                        <div class="mode-tab" :class="{active: activeTab === 'overview'}" @click="activeTab = 'overview'">
+                            概览
+                        </div>
+                        <div class="mode-tab" :class="{active: activeTab === 'list'}" @click="activeTab = 'list'">
+                            预警列表
+                            <span style="background:#ff5f57;color:#fff;padding:1px 5px;border-radius:8px;font-size:10px;margin-left:3px">7</span>
+                        </div>
+                        <div class="mode-tab" :class="{active: activeTab === 'stats'}" @click="activeTab = 'stats'">
+                            统计
+                        </div>
+                        <div class="mode-tab" :class="{active: activeTab === 'settings'}" @click="activeTab = 'settings'">
+                            设置
+                        </div>
+                    </div>
+
+                    <!-- 统计视图 -->
+                    <div class="stats-mode" v-show="activeTab === 'stats'">
+                        <!-- 表格统计 -->
+                        <div class="stat-card">
+                            <div class="card-header">
+                                <div class="card-title">今日订单统计</div>
+                                <div class="refresh-time">刷新: 60s</div>
+                            </div>
+                            <div class="card-body">
+                                <table class="stat-table">
+                                    <thead>
+                                        <tr>
+                                            <th>状态</th>
+                                            <th class="num">数量</th>
+                                            <th class="num">金额</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>待支付</td>
+                                            <td class="num">156</td>
+                                            <td class="num">¥45,320</td>
+                                        </tr>
+                                        <tr>
+                                            <td>已支付</td>
+                                            <td class="num">892</td>
+                                            <td class="num">¥234,560</td>
+                                        </tr>
+                                        <tr>
+                                            <td>已完成</td>
+                                            <td class="num">1,245</td>
+                                            <td class="num">¥456,780</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 折线图统计 -->
+                        <div class="stat-card">
+                            <div class="card-header">
+                                <div class="card-title">近7日订单趋势</div>
+                                <div class="refresh-time">刷新: 5min</div>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-placeholder">
+                                    <svg viewBox="0 0 300 80">
+                                        <!-- 网格线 -->
+                                        <line x1="30" y1="10" x2="290" y2="10" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                                        <line x1="30" y1="30" x2="290" y2="30" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                                        <line x1="30" y1="50" x2="290" y2="50" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                                        <line x1="30" y1="70" x2="290" y2="70" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+
+                                        <!-- 折线1 - 订单数量 -->
+                                        <polyline
+                                            fill="none"
+                                            stroke="#667eea"
+                                            stroke-width="2"
+                                            points="40,55 80,45 120,50 160,35 200,30 240,25 280,20"/>
+
+                                        <!-- 折线2 - 订单金额 -->
+                                        <polyline
+                                            fill="none"
+                                            stroke="#27c93f"
+                                            stroke-width="2"
+                                            points="40,60 80,55 120,45 160,50 200,40 240,35 280,30"/>
+
+                                        <!-- X轴标签 -->
+                                        <text x="40" y="78" fill="rgba(255,255,255,0.4)" font-size="8">12/18</text>
+                                        <text x="120" y="78" fill="rgba(255,255,255,0.4)" font-size="8">12/20</text>
+                                        <text x="200" y="78" fill="rgba(255,255,255,0.4)" font-size="8">12/22</text>
+                                        <text x="270" y="78" fill="rgba(255,255,255,0.4)" font-size="8">12/24</text>
+                                    </svg>
+                                    <div class="legend">
+                                        <span><div class="dot" style="background:#667eea"></div>订单数量</span>
+                                        <span><div class="dot" style="background:#27c93f"></div>订单金额</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 设置视图 -->
+                    <div class="settings-panel" v-show="activeTab === 'settings'">
+                        <div class="setting-item">
+                            <div>
+                                <div class="label">开机自启动</div>
+                                <div class="desc">系统启动时自动运行</div>
+                            </div>
+                            <div class="toggle-switch active"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="label">窗口置顶</div>
+                                <div class="desc">始终显示在其他窗口上方</div>
+                            </div>
+                            <div class="toggle-switch active"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="label">声音提示</div>
+                                <div class="desc">新预警时播放提示音</div>
+                            </div>
+                            <div class="toggle-switch"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="label">刷新间隔</div>
+                                <div class="desc">数据自动刷新频率</div>
+                            </div>
+                            <div style="color:#667eea;font-size:13px">60 秒 ›</div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="label">服务器地址</div>
+                                <div class="desc">后端API服务地址</div>
+                            </div>
+                            <div style="color:rgba(255,255,255,0.5);font-size:12px">localhost:5000</div>
+                        </div>
+                    </div>
+
+                    <!-- 概览视图 -->
+                    <div class="overview-mode" v-show="activeTab === 'overview'">
+                        <div class="alert-summary">
+                            <div class="alert-item critical">
+                                <div class="dot"></div>
+                                <div class="count">2</div>
+                                <div class="label">严重</div>
+                            </div>
+                            <div class="alert-item warning">
+                                <div class="dot"></div>
+                                <div class="count">5</div>
+                                <div class="label">警告</div>
+                            </div>
+                            <div class="alert-item info">
+                                <div class="dot"></div>
+                                <div class="count">0</div>
+                                <div class="label">信息</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 列表视图 -->
+                    <div class="list-mode" v-show="activeTab === 'list'" style="max-height:280px">
+                        <div class="alert-group">
+                            <div class="group-header expanded">
+                                <div class="dot" style="background:#ff5f57"></div>
+                                <div class="level-name">严重</div>
+                                <div class="count-badge">2</div>
+                                <div class="arrow">›</div>
+                            </div>
+                            <div class="alert-list">
+                                <div class="alert-entry">
+                                    <div class="message">官网健康检查 - 站点无法访问</div>
+                                    <div class="meta">
+                                        <span>首次: 09:30</span>
+                                        <span>累计 15次</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="alert-group">
+                            <div class="group-header expanded">
+                                <div class="dot" style="background:#ffbd2e"></div>
+                                <div class="level-name">警告</div>
+                                <div class="count-badge">5</div>
+                                <div class="arrow">›</div>
+                            </div>
+                            <div class="alert-list">
+                                <div class="alert-entry">
+                                    <div class="message">订单积压预警 - 积压 1523 单</div>
+                                    <div class="meta">
+                                        <span>首次: 08:00</span>
+                                        <span>累计 8次</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="status-bar">
+                        <div class="status">
+                            <div class="status-dot"></div>
+                            运行中
+                        </div>
+                        <div>刷新: 60s | 09:45:30</div>
+                    </div>
+                </div>
+                <div class="prototype-label">完整模式 - Tab切换</div>
+            </div>
+
+        </div>
+
+        <!-- 右键菜单 -->
+        <div class="context-menu" v-if="contextMenuVisible" :style="{left: contextMenuX + 'px', top: contextMenuY + 'px'}">
+            <div class="menu-item" @click="handleMenuAction('processing')">
+                <span>⏳</span> 标记为处理中
+            </div>
+            <div class="menu-item" @click="handleMenuAction('recovered')">
+                <span>✓</span> 标记为已恢复
+            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-item" @click="handleMenuAction('detail')">
+                <span>📋</span> 查看详情
+            </div>
+            <div class="menu-item" @click="handleMenuAction('copy')">
+                <span>📄</span> 复制消息
+            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-item danger" @click="handleMenuAction('ignore')">
+                <span>🚫</span> 忽略此预警
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue
+
+        createApp({
+            setup() {
+                const activeTab = ref('stats')
+                const showList1 = ref(false)
+
+                // 可展开模式
+                const isExpanded = ref(true)
+                const searchKeyword = ref('')
+                const activeFilter = ref('all')
+
+                // 右键菜单
+                const contextMenuVisible = ref(false)
+                const contextMenuX = ref(0)
+                const contextMenuY = ref(0)
+                const selectedAlertId = ref(null)
+
+                const showContextMenu = (event, alertId) => {
+                    contextMenuX.value = event.clientX
+                    contextMenuY.value = event.clientY
+                    selectedAlertId.value = alertId
+                    contextMenuVisible.value = true
+                }
+
+                const handleMenuAction = (action) => {
+                    contextMenuVisible.value = false
+                    switch (action) {
+                        case 'processing':
+                            alert('已标记为处理中')
+                            break
+                        case 'recovered':
+                            alert('已标记为已恢复')
+                            break
+                        case 'ignore':
+                            if (confirm('确定要忽略此预警吗？')) {
+                                alert('预警已忽略')
+                            }
+                            break
+                        case 'detail':
+                            alert('查看预警详情（将打开详情面板）')
+                            break
+                        case 'copy':
+                            alert('消息已复制到剪贴板')
+                            break
+                    }
+                }
+
+                // 点击其他地方关闭菜单
+                document.addEventListener('click', () => {
+                    contextMenuVisible.value = false
+                })
+
+                const toggleGroup = (group) => {
+                    // 切换分组展开/收起
+                }
+
+                return {
+                    activeTab,
+                    showList1,
+                    isExpanded,
+                    searchKeyword,
+                    activeFilter,
+                    contextMenuVisible,
+                    contextMenuX,
+                    contextMenuY,
+                    showContextMenu,
+                    handleMenuAction,
+                    toggleGroup
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

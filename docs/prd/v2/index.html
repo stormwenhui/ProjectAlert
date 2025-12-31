@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目监控 V2 - 主窗体原型</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 窗口容器 */
+        .window {
+            width: 1000px;
+            height: 650px;
+            background: #1e1e2e;
+            border-radius: 8px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #333;
+        }
+
+        /* 窗口标题栏 */
+        .title-bar {
+            height: 32px;
+            background: #2d2d3d;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            border-bottom: 1px solid #3d3d4d;
+            user-select: none;
+        }
+
+        .title-bar-icon {
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #00d9ff, #0099cc);
+            border-radius: 3px;
+            margin-right: 8px;
+        }
+
+        .title-bar-text {
+            flex: 1;
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .title-bar-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .title-btn {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-minimize { background: #f59e0b; }
+        .btn-maximize { background: #22c55e; }
+        .btn-close { background: #ef4444; }
+
+        /* 主体区域 */
+        .app-body {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* 左侧导航 */
+        .sidebar {
+            width: 180px;
+            background: #252536;
+            border-right: 1px solid #3d3d4d;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .nav-menu {
+            flex: 1;
+            padding: 8px 0;
+        }
+
+        .nav-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #888;
+            transition: all 0.15s;
+            border-left: 2px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: rgba(0, 217, 255, 0.08);
+            color: #bbb;
+        }
+
+        .nav-item.active {
+            background: rgba(0, 217, 255, 0.12);
+            border-left-color: #00d9ff;
+            color: #00d9ff;
+        }
+
+        .nav-item .icon {
+            font-size: 14px;
+            width: 18px;
+            text-align: center;
+        }
+
+        .nav-item .badge {
+            margin-left: auto;
+            background: #e94560;
+            color: white;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-size: 11px;
+        }
+
+        .app-status {
+            padding: 10px 15px;
+            border-top: 1px solid #3d3d4d;
+            font-size: 11px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #4ade80;
+        }
+
+        /* 右侧内容区 */
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1e1e2e;
+            overflow: hidden;
+        }
+
+        .content-header {
+            padding: 12px 20px;
+            background: #252536;
+            border-bottom: 1px solid #3d3d4d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .content-header h2 {
+            font-size: 14px;
+            font-weight: 500;
+            color: #ddd;
+        }
+
+        .content-body {
+            flex: 1;
+            padding: 15px 20px;
+            overflow-y: auto;
+        }
+
+        .content-body::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .content-body::-webkit-scrollbar-thumb {
+            background: #3d3d4d;
+            border-radius: 3px;
+        }
+
+        /* 按钮 */
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+
+        .btn-primary {
+            background: #00d9ff;
+            color: #1e1e2e;
+        }
+
+        .btn-primary:hover {
+            background: #00c4e6;
+        }
+
+        .btn-secondary {
+            background: #3d3d4d;
+            color: #ccc;
+        }
+
+        .btn-secondary:hover {
+            background: #4d4d5d;
+        }
+
+        .btn-danger {
+            background: #e94560;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+
+        /* 表格 */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #3d3d4d;
+        }
+
+        .data-table th {
+            background: #2d2d3d;
+            color: #888;
+            font-weight: normal;
+        }
+
+        .data-table tr:hover td {
+            background: rgba(0, 217, 255, 0.03);
+        }
+
+        .data-table .actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        /* 标签 */
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+
+        .tag-success { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+        .tag-warning { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+        .tag-danger { background: rgba(233, 69, 96, 0.15); color: #e94560; }
+        .tag-info { background: rgba(0, 217, 255, 0.15); color: #00d9ff; }
+
+        /* 开关 */
+        .switch {
+            position: relative;
+            width: 36px;
+            height: 18px;
+            display: inline-block;
+        }
+
+        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .switch .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: #3d3d4d;
+            border-radius: 18px;
+            transition: 0.2s;
+        }
+
+        .switch .slider:before {
+            content: "";
+            position: absolute;
+            height: 12px;
+            width: 12px;
+            left: 3px;
+            bottom: 3px;
+            background: #888;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+
+        .switch input:checked + .slider { background: #00d9ff; }
+        .switch input:checked + .slider:before { transform: translateX(18px); background: white; }
+
+        /* 表单 */
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            color: #888;
+            font-size: 12px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 8px 10px;
+            background: #2d2d3d;
+            border: 1px solid #3d3d4d;
+            border-radius: 4px;
+            color: #ddd;
+            font-size: 12px;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+
+        textarea.form-control {
+            min-height: 80px;
+            resize: vertical;
+            font-family: Consolas, monospace;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .form-row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* 卡片 */
+        .card {
+            background: #252536;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .card-title {
+            font-size: 12px;
+            color: #00d9ff;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #3d3d4d;
+        }
+
+        /* Tab */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+
+        .tab-item {
+            padding: 6px 14px;
+            background: #3d3d4d;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .tab-item:hover { background: #4d4d5d; }
+        .tab-item.active { background: #00d9ff; color: #1e1e2e; }
+
+        /* 页面切换 */
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* 预警组 */
+        .alert-group { margin-bottom: 15px; }
+
+        .alert-group-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .alert-group-title .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .dot.critical { background: #e94560; }
+        .dot.warning { background: #fbbf24; }
+        .dot.info { background: #00d9ff; }
+
+        .alert-item {
+            background: #2d2d3d;
+            border-radius: 4px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            margin-left: 16px;
+        }
+
+        .alert-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .alert-item-title {
+            font-size: 12px;
+            color: #ddd;
+            margin-bottom: 4px;
+        }
+
+        .alert-item-meta {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .alert-item-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        /* 设置项 */
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #3d3d4d;
+        }
+
+        .setting-item:last-child { border-bottom: none; }
+        .setting-label { font-size: 13px; color: #ddd; }
+        .setting-desc { font-size: 11px; color: #666; margin-top: 2px; }
+
+        /* 分类筛选 */
+        .category-filter {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .category-tag {
+            padding: 4px 10px;
+            background: #3d3d4d;
+            border-radius: 12px;
+            font-size: 11px;
+            color: #aaa;
+            cursor: pointer;
+        }
+
+        .category-tag:hover { background: #4d4d5d; }
+        .category-tag.active { background: #00d9ff; color: #1e1e2e; }
+
+        /* 工具栏 */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: #2d2d3d;
+            border-radius: 4px;
+            padding: 0 8px;
+        }
+
+        .search-box input {
+            background: none;
+            border: none;
+            color: #ddd;
+            padding: 6px;
+            width: 150px;
+            font-size: 12px;
+        }
+
+        .search-box input:focus { outline: none; }
+        .search-box .icon { color: #666; font-size: 12px; }
+
+        /* 弹窗 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.show { display: flex; }
+
+        .modal {
+            background: #252536;
+            border-radius: 8px;
+            width: 550px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #3d3d4d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 14px;
+            font-weight: 500;
+            color: #ddd;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 18px;
+            cursor: pointer;
+        }
+
+        .modal-close:hover { color: #aaa; }
+
+        .modal-body { padding: 16px; }
+
+        .modal-footer {
+            padding: 12px 16px;
+            border-top: 1px solid #3d3d4d;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="window">
+        <!-- 标题栏 -->
+        <div class="title-bar">
+            <div class="title-bar-icon"></div>
+            <span class="title-bar-text">项目监控 V2</span>
+            <div class="title-bar-buttons">
+                <button class="title-btn btn-minimize"></button>
+                <button class="title-btn btn-maximize"></button>
+                <button class="title-btn btn-close"></button>
+            </div>
+        </div>
+
+        <!-- 主体 -->
+        <div class="app-body">
+            <!-- 左侧导航 -->
+            <div class="sidebar">
+                <div class="nav-menu">
+                    <div class="nav-item active" data-page="db-connections">
+                        <span class="icon">&#9783;</span>
+                        <span>数据库连接</span>
+                    </div>
+                    <div class="nav-item" data-page="alert-rules">
+                        <span class="icon">&#9888;</span>
+                        <span>预警规则</span>
+                    </div>
+                    <div class="nav-item" data-page="stat-configs">
+                        <span class="icon">&#9636;</span>
+                        <span>统计配置</span>
+                    </div>
+                    <div class="nav-item" data-page="current-alerts">
+                        <span class="icon">&#9889;</span>
+                        <span>当前预警</span>
+                        <span class="badge">3</span>
+                    </div>
+                    <div class="nav-item" data-page="ignored-alerts">
+                        <span class="icon">&#10006;</span>
+                        <span>已忽略预警</span>
+                    </div>
+                    <div class="nav-item" data-page="settings">
+                        <span class="icon">&#9881;</span>
+                        <span>设置</span>
+                    </div>
+                </div>
+                <div class="app-status">
+                    <span class="status-dot"></span>
+                    <span>任务运行中</span>
+                </div>
+            </div>
+
+            <!-- 右侧内容 -->
+            <div class="content">
+                <!-- 数据库连接 -->
+                <div class="page active" id="page-db-connections">
+                    <div class="content-header">
+                        <h2>数据库连接</h2>
+                        <button class="btn btn-primary" onclick="showModal('modal-db')">+ 新增</button>
+                    </div>
+                    <div class="content-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>连接名称</th>
+                                    <th>类型</th>
+                                    <th>连接字符串</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>业务主库</td>
+                                    <td><span class="tag tag-info">MySQL</span></td>
+                                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">Server=192.168.1.100;Database=business_db;Uid=root;Pwd=***</td>
+                                    <td><span class="tag tag-success">启用</span></td>
+                                    <td class="actions">
+                                        <button class="btn btn-secondary btn-sm">测试</button>
+                                        <button class="btn btn-secondary btn-sm">编辑</button>
+                                        <button class="btn btn-danger btn-sm">删除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>只读从库</td>
+                                    <td><span class="tag tag-info">MySQL</span></td>
+                                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">Server=192.168.1.101;Database=business_db;Uid=readonly;Pwd=***</td>
+                                    <td><span class="tag tag-success">启用</span></td>
+                                    <td class="actions">
+                                        <button class="btn btn-secondary btn-sm">测试</button>
+                                        <button class="btn btn-secondary btn-sm">编辑</button>
+                                        <button class="btn btn-danger btn-sm">删除</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>日志库</td>
+                                    <td><span class="tag tag-warning">SQL Server</span></td>
+                                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">Data Source=192.168.1.102;Initial Catalog=logs;User Id=sa;Pwd=***</td>
+                                    <td><span class="tag tag-success">启用</span></td>
+                                    <td class="actions">
+                                        <button class="btn btn-secondary btn-sm">测试</button>
+                                        <button class="btn btn-secondary btn-sm">编辑</button>
+                                        <button class="btn btn-danger btn-sm">删除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 预警规则 -->
+                <div class="page" id="page-alert-rules">
+                    <div class="content-header">
+                        <h2>预警规则</h2>
+                        <button class="btn btn-primary" onclick="showModal('modal-alert-rule')">+ 新增</button>
+                    </div>
+                    <div class="content-body">
+                        <div class="toolbar">
+                            <div class="category-filter">
+                                <span class="category-tag active">全部</span>
+                                <span class="category-tag">订单中心</span>
+                                <span class="category-tag">支付中心</span>
+                                <span class="category-tag">系统监控</span>
+                            </div>
+                            <div class="search-box">
+                                <span class="icon">&#128269;</span>
+                                <input type="text" placeholder="搜索...">
+                            </div>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>规则名称</th>
+                                    <th>分类</th>
+                                    <th>数据源</th>
+                                    <th>级别</th>
+                                    <th>周期</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>订单积压预警</td>
+                                    <td>订单中心</td>
+                                    <td><span class="tag tag-info">SQL</span></td>
+                                    <td><span class="tag tag-warning">警告</span></td>
+                                    <td>5分钟</td>
+                                    <td><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></td>
+                                    <td class="actions">
+                                        <button class="btn btn-secondary btn-sm">编辑</button>
+                                        <button class="btn btn-secondary btn-sm">执行</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>支付失败监控</td>
+                                    <td>支付中心</td>
+                                    <td><span class="tag tag-info">SQL</span></td>
+                                    <td><span class="tag tag-danger">严重</span></td>
+                                    <td>1分钟</td>
+                                    <td><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></td>
+                                    <td class="actions">
+                                        <button class="btn btn-secondary btn-sm">编辑</button>
+                                        <button class="btn btn-secondary btn-sm">执行</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>官网健康检查</td>
+                                    <td>系统监控</td>
+                                    <td><span class="tag tag-success">API</span></td>
+                                    <td><span class="tag tag-danger">严重</span></td>
+                                    <td>30秒</td>
+                                    <td><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></td>
+                                    <td class="actions">
+                                        <button class="btn btn-secondary btn-sm">编辑</button>
+                                        <button class="btn btn-secondary btn-sm">执行</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 统计配置 -->
+                <div class="page" id="page-stat-configs">
+                    <div class="content-header">
+                        <h2>统计配置</h2>
+                        <button class="btn btn-primary" onclick="showModal('modal-stat')">+ 新增</button>
+                    </div>
+                    <div class="content-body">
+                        <div class="toolbar">
+                            <div class="category-filter">
+                                <span class="category-tag active">全部</span>
+                                <span class="category-tag">订单中心</span>
+                                <span class="category-tag">支付中心</span>
+                            </div>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>统计名称</th>
+                                    <th>分类</th>
+                                    <th>数据源</th>
+                                    <th>图表</th>
+                                    <th>刷新</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>今日订单统计</td>
+                                    <td>订单中心</td>
+                                    <td><span class="tag tag-info">SQL</span></td>
+                                    <td>表格</td>
+                                    <td>60秒</td>
+                                    <td><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></td>
+                                    <td class="actions">
+                                        <button class="btn btn-secondary btn-sm">预览</button>
+                                        <button class="btn btn-secondary btn-sm">编辑</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>近7日订单趋势</td>
+                                    <td>订单中心</td>
+                                    <td><span class="tag tag-info">SQL</span></td>
+                                    <td>折线图</td>
+                                    <td>5分钟</td>
+                                    <td><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></td>
+                                    <td class="actions">
+                                        <button class="btn btn-secondary btn-sm">预览</button>
+                                        <button class="btn btn-secondary btn-sm">编辑</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 当前预警 -->
+                <div class="page" id="page-current-alerts">
+                    <div class="content-header">
+                        <h2>当前预警</h2>
+                        <button class="btn btn-secondary">&#8635; 刷新</button>
+                    </div>
+                    <div class="content-body">
+                        <div class="alert-group">
+                            <div class="alert-group-title">
+                                <span class="dot critical"></span>
+                                <span>严重 (1)</span>
+                            </div>
+                            <div class="alert-item">
+                                <div class="alert-item-header">
+                                    <div>
+                                        <div class="alert-item-title">官网健康检查 - 站点无法访问（状态码: 502）</div>
+                                        <div class="alert-item-meta">首次: 09:30 | 最后: 10:45 | 累计 15次</div>
+                                    </div>
+                                    <div class="alert-item-actions">
+                                        <button class="btn btn-secondary btn-sm">处理中</button>
+                                        <button class="btn btn-secondary btn-sm">忽略</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="alert-group">
+                            <div class="alert-group-title">
+                                <span class="dot warning"></span>
+                                <span>警告 (2)</span>
+                            </div>
+                            <div class="alert-item">
+                                <div class="alert-item-header">
+                                    <div>
+                                        <div class="alert-item-title">订单积压预警 - 积压 1523 单</div>
+                                        <div class="alert-item-meta">首次: 08:00 | 最后: 10:40 | 累计 8次</div>
+                                    </div>
+                                    <div class="alert-item-actions">
+                                        <button class="btn btn-secondary btn-sm">处理中</button>
+                                        <button class="btn btn-secondary btn-sm">忽略</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="alert-item">
+                                <div class="alert-item-header">
+                                    <div>
+                                        <div class="alert-item-title">支付失败监控 - 张三 支付超时，金额: 500元</div>
+                                        <div class="alert-item-meta">首次: 10:20 | 最后: 10:45 | 累计 3次</div>
+                                    </div>
+                                    <div class="alert-item-actions">
+                                        <button class="btn btn-secondary btn-sm">处理中</button>
+                                        <button class="btn btn-secondary btn-sm">忽略</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 已忽略预警 -->
+                <div class="page" id="page-ignored-alerts">
+                    <div class="content-header">
+                        <h2>已忽略预警</h2>
+                    </div>
+                    <div class="content-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>规则名称</th>
+                                    <th>预警标识</th>
+                                    <th>忽略时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>API 响应时间</td>
+                                    <td>-</td>
+                                    <td>2024-01-14 15:30</td>
+                                    <td><button class="btn btn-secondary btn-sm">取消忽略</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 设置 -->
+                <div class="page" id="page-settings">
+                    <div class="content-header">
+                        <h2>设置</h2>
+                    </div>
+                    <div class="content-body">
+                        <div class="card">
+                            <div class="card-title">基本设置</div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">开机自启动</div>
+                                    <div class="setting-desc">系统启动时自动运行</div>
+                                </div>
+                                <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+                            </div>
+                            <div class="setting-item">
+                                <div>
+                                    <div class="setting-label">启动时显示悬浮窗</div>
+                                    <div class="setting-desc">程序启动后自动显示悬浮窗</div>
+                                </div>
+                                <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">悬浮窗设置</div>
+                            <div class="setting-item">
+                                <div class="setting-label">悬浮窗透明度</div>
+                                <input type="range" min="30" max="100" value="90" style="width:120px;">
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">关于</div>
+                            <div class="setting-item">
+                                <div class="setting-label">版本</div>
+                                <span style="color:#888;">V2.0.0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增数据库连接弹窗 -->
+    <div class="modal-overlay" id="modal-db">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>新增数据库连接</h3>
+                <button class="modal-close" onclick="hideModal('modal-db')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>连接名称</label>
+                    <input type="text" class="form-control" placeholder="如：业务主库">
+                </div>
+                <div class="form-group">
+                    <label>数据库类型</label>
+                    <select class="form-control">
+                        <option>MySQL</option>
+                        <option>SQL Server</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>连接字符串</label>
+                    <textarea class="form-control" placeholder="Server=localhost;Database=mydb;Uid=root;Pwd=123456;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>启用状态</label>
+                    <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideModal('modal-db')">取消</button>
+                <button class="btn btn-secondary">测试连接</button>
+                <button class="btn btn-primary">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增预警规则弹窗 -->
+    <div class="modal-overlay" id="modal-alert-rule">
+        <div class="modal" style="width:600px;">
+            <div class="modal-header">
+                <h3>新增预警规则</h3>
+                <button class="modal-close" onclick="hideModal('modal-alert-rule')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>规则名称</label>
+                        <input type="text" class="form-control" placeholder="如：订单积压预警">
+                    </div>
+                    <div class="form-group">
+                        <label>系统分类</label>
+                        <select class="form-control">
+                            <option>默认</option>
+                            <option>订单中心</option>
+                            <option>支付中心</option>
+                            <option>系统监控</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>数据源类型</label>
+                    <div class="tabs">
+                        <div class="tab-item active" onclick="switchSourceType(this,'sql')">SQL</div>
+                        <div class="tab-item" onclick="switchSourceType(this,'api')">API</div>
+                    </div>
+                </div>
+                <div id="sql-config">
+                    <div class="card">
+                        <div class="card-title">SQL 配置</div>
+                        <div class="form-group">
+                            <label>数据库连接</label>
+                            <select class="form-control">
+                                <option>业务主库</option>
+                                <option>只读从库</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>SQL 语句</label>
+                            <textarea class="form-control" placeholder="SELECT COUNT(*) as cnt FROM orders WHERE status='pending'"></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>判断方式</label>
+                                <select class="form-control">
+                                    <option>单值预警</option>
+                                    <option>多行预警</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>判断字段</label>
+                                <input type="text" class="form-control" placeholder="cnt">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>运算符</label>
+                                <select class="form-control">
+                                    <option>></option>
+                                    <option>>=</option>
+                                    <option><</option>
+                                    <option><=</option>
+                                    <option>=</option>
+                                    <option>!=</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>阈值</label>
+                                <input type="text" class="form-control" placeholder="100">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="api-config" style="display:none;">
+                    <div class="card">
+                        <div class="card-title">API 配置</div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex:2;">
+                                <label>请求地址</label>
+                                <input type="text" class="form-control" placeholder="https://api.example.com/health">
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label>请求方式</label>
+                                <select class="form-control">
+                                    <option>GET</option>
+                                    <option>POST</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>请求头 (JSON)</label>
+                            <textarea class="form-control" style="min-height:50px;" placeholder='{"Authorization":"Bearer xxx"}'></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>超时(秒)</label>
+                                <input type="number" class="form-control" value="30">
+                            </div>
+                            <div class="form-group">
+                                <label>判断层级</label>
+                                <select class="form-control">
+                                    <option>请求层</option>
+                                    <option>响应文本层</option>
+                                    <option>JSON解析层</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">预警配置</div>
+                    <div class="form-row-3">
+                        <div class="form-group">
+                            <label>预警级别</label>
+                            <select class="form-control">
+                                <option>信息</option>
+                                <option selected>警告</option>
+                                <option>严重</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>连续失败</label>
+                            <input type="number" class="form-control" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label>Cron</label>
+                            <input type="text" class="form-control" placeholder="0 */5 * * * ?">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>消息模板</label>
+                        <input type="text" class="form-control" placeholder="{$name} - 积压 {$table.cnt} 单">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideModal('modal-alert-rule')">取消</button>
+                <button class="btn btn-primary">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增统计配置弹窗 -->
+    <div class="modal-overlay" id="modal-stat">
+        <div class="modal" style="width:600px;">
+            <div class="modal-header">
+                <h3>新增统计配置</h3>
+                <button class="modal-close" onclick="hideModal('modal-stat')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>统计名称</label>
+                        <input type="text" class="form-control" placeholder="如：今日订单统计">
+                    </div>
+                    <div class="form-group">
+                        <label>系统分类</label>
+                        <select class="form-control">
+                            <option>默认</option>
+                            <option>订单中心</option>
+                            <option>支付中心</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>数据源类型</label>
+                    <div class="tabs">
+                        <div class="tab-item active">SQL</div>
+                        <div class="tab-item">API</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">数据配置</div>
+                    <div class="form-group">
+                        <label>数据库连接</label>
+                        <select class="form-control">
+                            <option>业务主库</option>
+                            <option>只读从库</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>SQL 语句</label>
+                        <textarea class="form-control" placeholder="SELECT status, COUNT(*) as count FROM orders GROUP BY status"></textarea>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">图表配置</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>图表类型</label>
+                            <select class="form-control">
+                                <option>表格</option>
+                                <option>折线图</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>刷新间隔(秒)</label>
+                            <input type="number" class="form-control" value="60">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideModal('modal-stat')">取消</button>
+                <button class="btn btn-primary">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 页面切换
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('page-' + this.dataset.page).classList.add('active');
+            });
+        });
+
+        // 分类过滤
+        document.querySelectorAll('.category-tag').forEach(tag => {
+            tag.addEventListener('click', function() {
+                this.parentElement.querySelectorAll('.category-tag').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // 弹窗
+        function showModal(id) { document.getElementById(id).classList.add('show'); }
+        function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+
+        // 数据源切换
+        function switchSourceType(el, type) {
+            el.parentElement.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+            document.getElementById('sql-config').style.display = type === 'sql' ? 'block' : 'none';
+            document.getElementById('api-config').style.display = type === 'api' ? 'block' : 'none';
+        }
+
+        // 点击弹窗外部关闭
+        document.querySelectorAll('.modal-overlay').forEach(o => {
+            o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); });
+        });
+    </script>
+</body>
+</html>
