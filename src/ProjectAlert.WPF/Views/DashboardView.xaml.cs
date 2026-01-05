@@ -34,6 +34,7 @@ public partial class DashboardView : UserControl
     private readonly LogConsoleWindowService _logConsoleWindowService;
     private readonly StatFloatingWindowService _statFloatingWindowService;
     private readonly NavigationService _navigationService;
+    private readonly FloatingEditModeService _editModeService;
 
     private readonly DispatcherTimer _resourceTimer;
     private readonly Process _currentProcess;
@@ -57,6 +58,7 @@ public partial class DashboardView : UserControl
         _logConsoleWindowService = App.Services.GetRequiredService<LogConsoleWindowService>();
         _statFloatingWindowService = App.Services.GetRequiredService<StatFloatingWindowService>();
         _navigationService = App.Services.GetRequiredService<NavigationService>();
+        _editModeService = App.Services.GetRequiredService<FloatingEditModeService>();
 
         // 订阅悬浮窗可见性变化事件
         _floatingWindowService.VisibilityChanged += OnAnyFloatingVisibilityChanged;
@@ -65,6 +67,9 @@ public partial class DashboardView : UserControl
         // 订阅统计浮窗事件
         _statFloatingWindowService.WindowsChanged += OnStatFloatingWindowsChanged;
         _statFloatingWindowService.VisibilityChanged += OnStatFloatingVisibilityChanged;
+
+        // 订阅编辑模式变化事件
+        _editModeService.EditModeChanged += OnEditModeChanged;
 
         // 初始化进程监控
         _currentProcess = Process.GetCurrentProcess();
@@ -76,7 +81,47 @@ public partial class DashboardView : UserControl
         {
             Interval = TimeSpan.FromSeconds(5)
         };
-        _resourceTimer.Tick += (_, _) => RefreshResourceStats();
+        _resourceTimer.Tick += OnResourceTimerTick;
+
+        // 注册 Unloaded 事件
+        Unloaded += UserControl_Unloaded;
+    }
+
+    /// <summary>
+    /// 资源定时器回调
+    /// </summary>
+    private void OnResourceTimerTick(object? sender, EventArgs e)
+    {
+        RefreshResourceStats();
+    }
+
+    /// <summary>
+    /// 页面卸载事件 - 清理资源
+    /// </summary>
+    private void UserControl_Unloaded(object sender, RoutedEventArgs e)
+    {
+        // 停止定时器
+        _resourceTimer.Stop();
+        _resourceTimer.Tick -= OnResourceTimerTick;
+
+        // 取消事件订阅
+        _floatingWindowService.VisibilityChanged -= OnAnyFloatingVisibilityChanged;
+        _logConsoleWindowService.VisibilityChanged -= OnAnyFloatingVisibilityChanged;
+        _statFloatingWindowService.WindowsChanged -= OnStatFloatingWindowsChanged;
+        _statFloatingWindowService.VisibilityChanged -= OnStatFloatingVisibilityChanged;
+        _editModeService.EditModeChanged -= OnEditModeChanged;
+
+        Unloaded -= UserControl_Unloaded;
+
+        // 清理按钮事件
+        foreach (var info in _floatingButtons)
+        {
+            if (info.Button != null)
+            {
+                info.Button.Click -= OnFloatingButtonClick;
+            }
+        }
+        _floatingButtons.Clear();
     }
 
     /// <summary>
@@ -89,6 +134,9 @@ public partial class DashboardView : UserControl
         // 初始刷新资源统计并启动定时器
         RefreshResourceStats();
         _resourceTimer.Start();
+
+        // 初始化编辑模式按钮状态
+        UpdateEditModeButton(_editModeService.IsEditMode);
 
         // 注册卡片点击事件
         try
@@ -729,4 +777,41 @@ public partial class DashboardView : UserControl
 
     [DllImport("user32.dll")]
     private static extern uint GetGuiResources(IntPtr hProcess, uint uiFlags);
+
+    /// <summary>
+    /// 编辑模式变化事件处理
+    /// </summary>
+    private void OnEditModeChanged(object? sender, bool isEditMode)
+    {
+        Dispatcher.Invoke(() => UpdateEditModeButton(isEditMode));
+    }
+
+    /// <summary>
+    /// 编辑模式按钮点击事件
+    /// </summary>
+    private void BtnEditMode_Click(object sender, RoutedEventArgs e)
+    {
+        _editModeService.ToggleEditMode();
+    }
+
+    /// <summary>
+    /// 更新编辑模式按钮状态
+    /// </summary>
+    private void UpdateEditModeButton(bool isEditMode)
+    {
+        if (FindName("BtnEditMode") is not Button btnEditMode) return;
+
+        if (isEditMode)
+        {
+            btnEditMode.Content = "退出编辑";
+            btnEditMode.Background = new SolidColorBrush(Color.FromRgb(255, 152, 0)); // Orange
+            btnEditMode.Foreground = System.Windows.Media.Brushes.White;
+        }
+        else
+        {
+            btnEditMode.Content = "编辑浮窗";
+            btnEditMode.Background = new SolidColorBrush(Color.FromRgb(245, 245, 245)); // Light gray
+            btnEditMode.Foreground = new SolidColorBrush(Color.FromRgb(97, 97, 97)); // Dark gray
+        }
+    }
 }

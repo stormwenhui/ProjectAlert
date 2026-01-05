@@ -1,11 +1,8 @@
 using System.Collections.ObjectModel;
-using System.Net.Http;
-using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Dapper;
 using ProjectAlert.Domain.Entities;
-using ProjectAlert.Domain.Enums;
-using ProjectAlert.Repository;
+using ProjectAlert.WPF.Services;
+using ProjectAlert.WPF.Services.TaskQueue;
 
 namespace ProjectAlert.WPF.ViewModels;
 
@@ -14,7 +11,8 @@ namespace ProjectAlert.WPF.ViewModels;
 /// </summary>
 public partial class StatFloatingViewModel : FloatingWidgetViewModelBase
 {
-    private readonly IDbConnectionFactory _dbConnectionFactory;
+    private readonly ITaskQueue _taskQueue;
+    private readonly LogService _logService;
 
     /// <summary>
     /// 统计配置
@@ -28,15 +26,15 @@ public partial class StatFloatingViewModel : FloatingWidgetViewModelBase
     public int StatConfigId => StatConfig?.Id ?? 0;
 
     /// <summary>
+    /// 刷新间隔（秒）
+    /// </summary>
+    public int RefreshInterval => StatConfig?.RefreshInterval ?? 60;
+
+    /// <summary>
     /// 查询结果数据
     /// </summary>
     [ObservableProperty]
     private ObservableCollection<Dictionary<string, object>> _data = [];
-
-    /// <summary>
-    /// 上一次的数据快照（用于计算变化量）
-    /// </summary>
-    private List<Dictionary<string, object>> _previousData = [];
 
     /// <summary>
     /// 列名列表
@@ -45,294 +43,162 @@ public partial class StatFloatingViewModel : FloatingWidgetViewModelBase
     private ObservableCollection<string> _columns = [];
 
     /// <summary>
-    /// 数据库连接
-    /// </summary>
-    public DbConnection? DbConnection { get; set; }
-
-    /// <summary>
     /// 构造函数
     /// </summary>
-    public StatFloatingViewModel(IDbConnectionFactory dbConnectionFactory)
+    public StatFloatingViewModel(ITaskQueue taskQueue, LogService logService)
     {
-        _dbConnectionFactory = dbConnectionFactory;
+        _taskQueue = taskQueue;
+        _logService = logService;
+
+        // 订阅任务完成事件
+        _taskQueue.TaskCompleted += OnTaskCompleted;
+        _taskQueue.TaskStarted += OnTaskStarted;
     }
 
     /// <summary>
     /// 初始化统计配置
     /// </summary>
-    public void Initialize(StatConfig config, DbConnection? dbConnection)
+    public void Initialize(StatConfig config)
     {
         StatConfig = config;
-        DbConnection = dbConnection;
         Title = config.Name;
     }
 
     /// <summary>
-    /// 刷新数据
+    /// 窗口显示时调用
     /// </summary>
-    public override async Task RefreshAsync()
+    /// <param name="initialDelay">初始延迟（用于错开启动）</param>
+    public void OnWindowShown(TimeSpan? initialDelay = null)
     {
-        if (StatConfig == null) return;
+        // 请求刷新数据（可带初始延迟）
+        _taskQueue.Enqueue(new TaskRequest
+        {
+            Type = TaskType.StatRefresh,
+            TargetId = StatConfigId,
+            ScheduledTime = initialDelay.HasValue
+                ? DateTime.Now.Add(initialDelay.Value)
+                : null,
+            Priority = 2,
+            Source = "统计浮窗显示"
+        });
 
+        // 注册定时刷新（带初始延迟，错开执行）
+        _taskQueue.RegisterTimer(
+            TaskType.StatRefresh,
+            targetId: StatConfigId,
+            interval: TimeSpan.FromSeconds(RefreshInterval),
+            initialDelay: initialDelay
+        );
+    }
+
+    /// <summary>
+    /// 窗口隐藏时调用
+    /// </summary>
+    public void OnWindowHidden()
+    {
+        _taskQueue.UnregisterTimer(TaskType.StatRefresh, StatConfigId);
+    }
+
+    /// <summary>
+    /// 请求刷新数据
+    /// </summary>
+    public void RequestRefresh(string source = "手动刷新")
+    {
+        _taskQueue.Enqueue(new TaskRequest
+        {
+            Type = TaskType.StatRefresh,
+            TargetId = StatConfigId,
+            Priority = 1,  // 高优先级
+            Source = source
+        });
+    }
+
+    /// <summary>
+    /// 任务开始时
+    /// </summary>
+    private void OnTaskStarted(TaskRequest request)
+    {
+        // 只处理自己的任务
+        if (request.Type != TaskType.StatRefresh) return;
+        if (request.TargetId != StatConfigId) return;
+
+        _logService.TaskQueueLog("VM收到开始", request.TaskKey, $"StatFloatingViewModel[{StatConfigId}].OnTaskStarted");
         IsLoading = true;
         ErrorMessage = null;
+    }
 
-        try
+    /// <summary>
+    /// 任务完成时
+    /// </summary>
+    private void OnTaskCompleted(TaskCompletedEvent e)
+    {
+        // 只处理统计刷新 + 且是自己的数据
+        if (e.Type != TaskType.StatRefresh) return;
+        if (e.TargetId != StatConfigId) return;
+
+        _logService.TaskQueueLog("VM收到完成", $"StatRefresh_{StatConfigId}",
+            $"Success={e.Success}, 耗时={e.Duration.TotalMilliseconds:F0}ms");
+
+        IsLoading = false;
+
+        if (e.Success && e.Data is StatRefreshResult data)
         {
-            switch (StatConfig.SourceType)
-            {
-                case SourceType.Sql:
-                    await RefreshFromSqlAsync();
-                    break;
-                case SourceType.Api:
-                    await RefreshFromApiAsync();
-                    break;
-            }
-            LastUpdateTime = DateTime.Now;
+            _logService.TaskQueueLog("VM应用数据", $"StatRefresh_{StatConfigId}",
+                $"行数={data.Rows.Count}, 列数={data.Columns.Count}");
+            ApplyRefreshResult(data);
+            _logService.TaskQueueLog("VM更新完成", $"StatRefresh_{StatConfigId}", "UI已更新");
         }
-        catch (Exception ex)
+        else if (!e.Success)
         {
-            ErrorMessage = ex.Message;
-        }
-        finally
-        {
-            IsLoading = false;
+            _logService.TaskQueueLog("VM处理失败", $"StatRefresh_{StatConfigId}", $"错误={e.ErrorMessage}");
+            ErrorMessage = e.ErrorMessage ?? "刷新失败";
         }
     }
 
     /// <summary>
-    /// 从SQL刷新数据
+    /// 应用刷新结果
     /// </summary>
-    private async Task RefreshFromSqlAsync()
+    private void ApplyRefreshResult(StatRefreshResult data)
     {
-        if (DbConnection == null)
-            throw new InvalidOperationException("未配置数据库连接");
-
-        if (string.IsNullOrEmpty(StatConfig.SqlQuery))
-            throw new InvalidOperationException("未配置SQL查询语句");
-
-        using var connection = _dbConnectionFactory.CreateConnection(DbConnection);
-        if (connection is System.Data.Common.DbConnection dbConnection)
-        {
-            await dbConnection.OpenAsync();
-        }
-        else
-        {
-            connection.Open();
-        }
-
-        var results = await connection.QueryAsync<dynamic>(StatConfig.SqlQuery);
-        var dataList = results.ToList();
-
-        Data.Clear();
+        // 更新列名
         Columns.Clear();
-
-        if (dataList.Count > 0)
+        foreach (var col in data.Columns)
         {
-            // 获取列名
-            var firstRow = (IDictionary<string, object>)dataList[0];
-            foreach (var key in firstRow.Keys)
-            {
-                Columns.Add(key);
-            }
-
-            // 收集新数据
-            var newData = new List<Dictionary<string, object>>();
-            foreach (var row in dataList)
-            {
-                var dict = (IDictionary<string, object>)row;
-                newData.Add(new Dictionary<string, object>(dict));
-            }
-
-            // 应用变化标记并填充数据
-            ApplyChangeMarkers(newData);
-        }
-    }
-
-    /// <summary>
-    /// 从API刷新数据
-    /// </summary>
-    private async Task RefreshFromApiAsync()
-    {
-        if (string.IsNullOrEmpty(StatConfig.ApiUrl))
-            throw new InvalidOperationException("未配置API地址");
-
-        using var httpClient = new HttpClient();
-        httpClient.Timeout = TimeSpan.FromSeconds(StatConfig.ApiTimeout);
-
-        // 设置请求头
-        if (!string.IsNullOrEmpty(StatConfig.ApiHeaders))
-        {
-            try
-            {
-                var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(StatConfig.ApiHeaders);
-                if (headers != null)
-                {
-                    foreach (var header in headers)
-                    {
-                        httpClient.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, header.Value);
-                    }
-                }
-            }
-            catch
-            {
-                // 忽略解析错误
-            }
+            Columns.Add(col);
         }
 
-        HttpResponseMessage response;
-        if (StatConfig.ApiMethod?.ToUpper() == "POST")
-        {
-            var content = new StringContent(StatConfig.ApiBody ?? string.Empty, System.Text.Encoding.UTF8, "application/json");
-            response = await httpClient.PostAsync(StatConfig.ApiUrl, content);
-        }
-        else
-        {
-            response = await httpClient.GetAsync(StatConfig.ApiUrl);
-        }
-
-        response.EnsureSuccessStatusCode();
-        var json = await response.Content.ReadAsStringAsync();
-
-        // 解析JSON数据
-        var jsonElement = JsonSerializer.Deserialize<JsonElement>(json);
-
-        // 如果指定了数据路径，按路径获取数据
-        if (!string.IsNullOrEmpty(StatConfig.DataPath))
-        {
-            var paths = StatConfig.DataPath.Split('.');
-            foreach (var path in paths)
-            {
-                if (jsonElement.ValueKind == JsonValueKind.Object && jsonElement.TryGetProperty(path, out var next))
-                {
-                    jsonElement = next;
-                }
-                else
-                {
-                    throw new InvalidOperationException($"无法在JSON中找到路径: {StatConfig.DataPath}");
-                }
-            }
-        }
-
+        // 更新数据（使用带变化标记的显示数据）
         Data.Clear();
-        Columns.Clear();
-
-        if (jsonElement.ValueKind == JsonValueKind.Array)
+        foreach (var row in data.DisplayRows)
         {
-            var array = jsonElement.EnumerateArray().ToList();
-            if (array.Count > 0)
-            {
-                // 获取列名
-                if (array[0].ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var prop in array[0].EnumerateObject())
-                    {
-                        Columns.Add(prop.Name);
-                    }
-
-                    // 收集新数据
-                    var newData = new List<Dictionary<string, object>>();
-                    foreach (var item in array)
-                    {
-                        var dict = new Dictionary<string, object>();
-                        foreach (var prop in item.EnumerateObject())
-                        {
-                            dict[prop.Name] = GetJsonValue(prop.Value);
-                        }
-                        newData.Add(dict);
-                    }
-
-                    // 应用变化标记并填充数据
-                    ApplyChangeMarkers(newData);
-                }
-            }
+            Data.Add(row);
         }
+
+        LastUpdateTime = data.UpdateTime;
+        ErrorMessage = null;
     }
 
     /// <summary>
-    /// 获取JSON值
+    /// 刷新数据（兼容旧接口，改为通过任务队列）
     /// </summary>
-    private static object GetJsonValue(JsonElement element)
+    public override Task RefreshAsync()
     {
-        return element.ValueKind switch
-        {
-            JsonValueKind.String => element.GetString() ?? string.Empty,
-            JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => string.Empty,
-            _ => element.ToString()
-        };
+        RequestRefresh("RefreshAsync调用");
+        return Task.CompletedTask;
     }
 
     /// <summary>
-    /// 应用变化标记到数据
+    /// 释放资源
     /// </summary>
-    private void ApplyChangeMarkers(List<Dictionary<string, object>> newData)
+    protected override void Dispose(bool disposing)
     {
-        if (_previousData.Count == 0 || newData.Count == 0)
+        if (disposing)
         {
-            // 首次加载或无数据，保存当前数据并直接显示
-            _previousData = newData.Select(d => new Dictionary<string, object>(d)).ToList();
-            foreach (var row in newData)
-            {
-                Data.Add(row);
-            }
-            return;
+            // 取消任务队列事件订阅
+            _taskQueue.TaskCompleted -= OnTaskCompleted;
+            _taskQueue.TaskStarted -= OnTaskStarted;
         }
 
-        // 比较并添加变化标记
-        for (int i = 0; i < newData.Count; i++)
-        {
-            var newRow = newData[i];
-            var displayRow = new Dictionary<string, object>();
-
-            // 尝试找到对应的旧行（按行索引匹配）
-            Dictionary<string, object>? oldRow = i < _previousData.Count ? _previousData[i] : null;
-
-            foreach (var kvp in newRow)
-            {
-                var key = kvp.Key;
-                var newValue = kvp.Value;
-
-                // 检查是否为数值类型
-                if (oldRow != null && oldRow.TryGetValue(key, out var oldValue) && IsNumeric(newValue) && IsNumeric(oldValue))
-                {
-                    var newNum = Convert.ToDecimal(newValue);
-                    var oldNum = Convert.ToDecimal(oldValue);
-                    var diff = newNum - oldNum;
-
-                    if (diff != 0)
-                    {
-                        // 有变化，添加标记
-                        var sign = diff > 0 ? "+" : "";
-                        displayRow[key] = $"{newValue}（{sign}{diff}）";
-                    }
-                    else
-                    {
-                        displayRow[key] = newValue;
-                    }
-                }
-                else
-                {
-                    displayRow[key] = newValue;
-                }
-            }
-
-            Data.Add(displayRow);
-        }
-
-        // 保存当前数据作为下次比较的基准
-        _previousData = newData.Select(d => new Dictionary<string, object>(d)).ToList();
-    }
-
-    /// <summary>
-    /// 判断是否为数值类型
-    /// </summary>
-    private static bool IsNumeric(object? value)
-    {
-        if (value == null) return false;
-        return value is sbyte or byte or short or ushort or int or uint or long or ulong
-            or float or double or decimal;
+        base.Dispose(disposing);
     }
 }

@@ -7,6 +7,8 @@ using ProjectAlert.Repository.Repositories;
 using ProjectAlert.WPF.Services;
 using ProjectAlert.WPF.Services.Executor;
 using ProjectAlert.WPF.Services.Scheduler;
+using ProjectAlert.WPF.Services.TaskQueue;
+using ProjectAlert.WPF.Services.TaskQueue.Executors;
 using ProjectAlert.WPF.ViewModels;
 using ProjectAlert.WPF.Views;
 using Quartz;
@@ -62,10 +64,17 @@ public partial class App : Application
         var floatingViewModel = Services.GetRequiredService<FloatingViewModel>();
         await floatingWindowService.InitializeAsync(floatingViewModel);
 
+        // 随机延迟 500-2000ms，错开浮窗启动时间
+        var random = new Random();
+        await Task.Delay(random.Next(500, 2001));
+
         // 初始化统计浮窗服务（自动恢复上次状态）
         var statFloatingWindowService = Services.GetRequiredService<StatFloatingWindowService>();
         await statFloatingWindowService.RefreshConfigsAsync();
         await statFloatingWindowService.RestoreVisibleWindowsAsync();
+
+        // 随机延迟 500-2000ms，错开日志控制台浮窗启动时间
+        await Task.Delay(random.Next(500, 2001));
 
         // 初始化日志控制台浮窗服务
         var logConsoleWindowService = Services.GetRequiredService<LogConsoleWindowService>();
@@ -139,8 +148,16 @@ public partial class App : Application
         services.AddScoped<IAppSettingRepository, AppSettingRepository>();
         services.AddSingleton<IFloatingWindowStateRepository, FloatingWindowStateRepository>();
 
-        // Quartz 调度器
-        services.AddQuartz();
+        // Quartz 调度器（减少线程池大小）
+        services.AddQuartz(q =>
+        {
+            q.UseSimpleTypeLoader();
+            q.UseInMemoryStore();
+            q.UseDefaultThreadPool(tp =>
+            {
+                tp.MaxConcurrency = 3;  // 降低并发数，从默认 10 降到 3
+            });
+        });
 
         // HTTP 客户端
         services.AddHttpClient();
@@ -153,6 +170,22 @@ public partial class App : Application
         services.AddScoped<SqlAlertExecutor>();
         services.AddScoped<ApiAlertExecutor>();
 
+        // 任务队列
+        services.Configure<TaskQueueOptions>(options =>
+        {
+            options.MaxConcurrency = 3;
+            options.EnableDeduplication = true;
+            options.DeduplicationWindowSeconds = 5;
+            options.TaskTimeoutSeconds = 60;
+            options.MinTaskIntervalMs = 100;
+            options.BatchIntervalMinMs = 500;
+            options.BatchIntervalMaxMs = 2000;
+        });
+        services.AddSingleton<ITaskQueue, TaskQueueService>();
+        services.AddScoped<ITaskExecutor, AlertRefreshExecutor>();
+        services.AddScoped<ITaskExecutor, StatRefreshExecutor>();
+        services.AddScoped<ITaskExecutor, AlertCheckExecutor>();
+
         // 导航服务
         services.AddSingleton<NavigationService>();
 
@@ -160,6 +193,7 @@ public partial class App : Application
         services.AddSingleton<FloatingWindowService>();
         services.AddSingleton<StatFloatingWindowService>();
         services.AddSingleton<LogConsoleWindowService>();
+        services.AddSingleton<FloatingEditModeService>();
 
         // 日志服务
         services.AddSingleton<LogService>();
@@ -206,6 +240,20 @@ public partial class App : Application
         {
             await schedulerService.StopAsync();
         }
+
+        // 停止任务队列
+        var taskQueue = Services.GetService<ITaskQueue>();
+        if (taskQueue is IDisposable disposableQueue)
+        {
+            disposableQueue.Dispose();
+        }
+
+        // 清理 ViewModel 资源（取消事件订阅）
+        var logConsoleViewModel = Services.GetService<LogConsoleViewModel>();
+        logConsoleViewModel?.Dispose();
+
+        var floatingViewModel = Services.GetService<FloatingViewModel>();
+        floatingViewModel?.Dispose();
 
         if (_host != null)
         {

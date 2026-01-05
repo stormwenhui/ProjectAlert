@@ -4,6 +4,8 @@ using CommunityToolkit.Mvvm.Input;
 using ProjectAlert.Domain.Entities;
 using ProjectAlert.Domain.Enums;
 using ProjectAlert.Domain.Interfaces;
+using ProjectAlert.WPF.Services;
+using ProjectAlert.WPF.Services.TaskQueue;
 
 namespace ProjectAlert.WPF.ViewModels;
 
@@ -31,6 +33,11 @@ public partial class AlertDisplayItem : ObservableObject
     /// 预警消息
     /// </summary>
     public string Message => Alert.Message;
+
+    /// <summary>
+    /// 单行显示的消息（过滤换行符）
+    /// </summary>
+    public string MessageSingleLine => Alert.Message.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
 
     /// <summary>
     /// 预警级别
@@ -139,7 +146,9 @@ public partial class CategoryTabItem : ObservableObject
 /// </summary>
 public partial class FloatingViewModel : FloatingWidgetViewModelBase
 {
+    private readonly ITaskQueue _taskQueue;
     private readonly ICurrentAlertRepository _currentAlertRepository;
+    private readonly LogService _logService;
     private List<CurrentAlert> _allAlerts = [];
 
     /// <summary>
@@ -197,10 +206,127 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
     /// <summary>
     /// 构造函数
     /// </summary>
-    public FloatingViewModel(ICurrentAlertRepository currentAlertRepository)
+    public FloatingViewModel(ITaskQueue taskQueue, ICurrentAlertRepository currentAlertRepository, LogService logService)
     {
+        _taskQueue = taskQueue;
         _currentAlertRepository = currentAlertRepository;
+        _logService = logService;
         Title = "项目监控";
+
+        // 订阅任务完成事件
+        _taskQueue.TaskCompleted += OnTaskCompleted;
+        _taskQueue.TaskStarted += OnTaskStarted;
+    }
+
+    /// <summary>
+    /// 窗口显示时调用
+    /// </summary>
+    public void OnWindowShown()
+    {
+        // 请求刷新数据
+        RequestRefresh("窗口显示");
+
+        // 注册定时刷新（30秒间隔）
+        _taskQueue.RegisterTimer(
+            TaskType.AlertRefresh,
+            targetId: null,
+            interval: TimeSpan.FromSeconds(30)
+        );
+    }
+
+    /// <summary>
+    /// 窗口隐藏时调用
+    /// </summary>
+    public void OnWindowHidden()
+    {
+        _taskQueue.UnregisterTimer(TaskType.AlertRefresh, targetId: null);
+    }
+
+    /// <summary>
+    /// 请求刷新数据
+    /// </summary>
+    public void RequestRefresh(string source = "手动刷新")
+    {
+        _taskQueue.Enqueue(new TaskRequest
+        {
+            Type = TaskType.AlertRefresh,
+            Priority = 1,  // 高优先级
+            Source = source
+        });
+    }
+
+    /// <summary>
+    /// 任务开始时
+    /// </summary>
+    private void OnTaskStarted(TaskRequest request)
+    {
+        if (request.Type != TaskType.AlertRefresh) return;
+
+        _logService.TaskQueueLog("VM收到开始", request.TaskKey, "FloatingViewModel.OnTaskStarted");
+        IsLoading = true;
+        ErrorMessage = null;
+    }
+
+    /// <summary>
+    /// 任务完成时
+    /// </summary>
+    private void OnTaskCompleted(TaskCompletedEvent e)
+    {
+        // 处理预警刷新结果
+        if (e.Type == TaskType.AlertRefresh)
+        {
+            _logService.TaskQueueLog("VM收到完成", "AlertRefresh",
+                $"Success={e.Success}, 耗时={e.Duration.TotalMilliseconds:F0}ms");
+
+            IsLoading = false;
+
+            if (e.Success && e.Data is AlertRefreshResult data)
+            {
+                _logService.TaskQueueLog("VM应用数据", "AlertRefresh",
+                    $"预警数={data.Alerts.Count}, 严重={data.CriticalCount}, 警告={data.WarningCount}, 信息={data.InfoCount}");
+                ApplyRefreshResult(data);
+                _logService.TaskQueueLog("VM更新完成", "AlertRefresh", "UI已更新");
+            }
+            else if (!e.Success)
+            {
+                _logService.TaskQueueLog("VM处理失败", "AlertRefresh", $"错误={e.ErrorMessage}");
+                ErrorMessage = e.ErrorMessage ?? "刷新失败";
+            }
+        }
+        // 处理预警检查结果（有新预警时刷新界面）
+        else if (e.Type == TaskType.AlertCheck && e.Success && e.Data is AlertCheckResult checkResult)
+        {
+            if (checkResult.HasNewAlert)
+            {
+                _logService.TaskQueueLog("VM新预警通知", $"AlertCheck_{checkResult.RuleId}",
+                    $"规则={checkResult.RuleName}, 触发刷新请求");
+                // 有新预警，请求刷新数据
+                RequestRefresh("新预警通知");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 应用刷新结果
+    /// </summary>
+    private void ApplyRefreshResult(AlertRefreshResult data)
+    {
+        _allAlerts = data.Alerts;
+
+        // 只统计未处理的预警数量
+        var unhandledAlerts = _allAlerts.Where(a => a.Status == AlertStatus.未处理).ToList();
+        CriticalCount = unhandledAlerts.Count(a => a.AlertLevel == AlertLevel.严重);
+        WarningCount = unhandledAlerts.Count(a => a.AlertLevel == AlertLevel.警告);
+        InfoCount = unhandledAlerts.Count(a => a.AlertLevel == AlertLevel.信息);
+
+        LastUpdateTime = data.UpdateTime;
+        ErrorMessage = null;
+
+        OnPropertyChanged(nameof(IsAllClear));
+
+        // 更新分类Tab和分组
+        UpdateCategories();
+        UpdateAlertGroups();
     }
 
     /// <summary>
@@ -227,7 +353,7 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
     {
         if (item == null) return;
         await _currentAlertRepository.UpdateStatusAsync(item.Alert.Id, AlertStatus.处理中, "用户操作");
-        await RefreshAsync();
+        RequestRefresh("状态更新");
     }
 
     /// <summary>
@@ -238,7 +364,7 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
     {
         if (item == null) return;
         await _currentAlertRepository.UpdateStatusAsync(item.Alert.Id, AlertStatus.已忽略, "用户操作");
-        await RefreshAsync();
+        RequestRefresh("状态更新");
     }
 
     /// <summary>
@@ -249,7 +375,7 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
     {
         if (item == null) return;
         await _currentAlertRepository.UpdateStatusAsync(item.Alert.Id, AlertStatus.已恢复, "用户操作");
-        await RefreshAsync();
+        RequestRefresh("状态更新");
     }
 
     /// <summary>
@@ -270,38 +396,26 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
     }
 
     /// <summary>
-    /// 刷新预警统计
+    /// 显示消息详情弹窗
     /// </summary>
-    public override async Task RefreshAsync()
+    [RelayCommand]
+    private void ShowMessageDetail(AlertDisplayItem? item)
     {
-        try
-        {
-            IsLoading = true;
-            ErrorMessage = null;
+        if (item == null) return;
+        System.Windows.MessageBox.Show(
+            item.Message,
+            $"预警详情 - {item.SourceName}",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Information);
+    }
 
-            var alerts = await _currentAlertRepository.GetAllWithRuleAsync();
-            // 过滤掉已忽略的预警
-            _allAlerts = alerts.Where(a => a.Status != AlertStatus.已忽略).ToList();
-
-            CriticalCount = _allAlerts.Count(a => a.AlertLevel == AlertLevel.严重);
-            WarningCount = _allAlerts.Count(a => a.AlertLevel == AlertLevel.警告);
-            InfoCount = _allAlerts.Count(a => a.AlertLevel == AlertLevel.信息);
-            LastUpdateTime = DateTime.Now;
-
-            OnPropertyChanged(nameof(IsAllClear));
-
-            // 更新分类Tab和分组
-            UpdateCategories();
-            UpdateAlertGroups();
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = ex.Message;
-        }
-        finally
-        {
-            IsLoading = false;
-        }
+    /// <summary>
+    /// 刷新预警统计（兼容旧接口，改为通过任务队列）
+    /// </summary>
+    public override Task RefreshAsync()
+    {
+        RequestRefresh("RefreshAsync调用");
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -309,7 +423,10 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
     /// </summary>
     private void UpdateCategories()
     {
-        var categoryGroups = _allAlerts
+        // 只统计未处理的预警
+        var unhandledAlerts = _allAlerts.Where(a => a.Status == AlertStatus.未处理).ToList();
+
+        var categoryGroups = unhandledAlerts
             .Where(a => a.Rule != null)
             .GroupBy(a => a.Rule!.Category)
             .ToDictionary(g => g.Key, g => g.Count());
@@ -321,7 +438,7 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
         {
             Category = null,
             Name = "全部",
-            Count = _allAlerts.Count,
+            Count = unhandledAlerts.Count,
             IsSelected = SelectedCategory?.Category == null
         });
 
@@ -357,10 +474,11 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
     /// </summary>
     private void UpdateAlertGroups()
     {
-        // 根据选中的分类筛选
-        var filtered = SelectedCategory?.Category == null
-            ? _allAlerts
-            : _allAlerts.Where(a => a.Rule?.Category == SelectedCategory.Category).ToList();
+        // 只显示未处理的预警，根据选中的分类筛选
+        var filtered = _allAlerts
+            .Where(a => a.Status == AlertStatus.未处理)
+            .Where(a => SelectedCategory?.Category == null || a.Rule?.Category == SelectedCategory.Category)
+            .ToList();
 
         // 严重级别分组
         var criticalItems = filtered.Where(a => a.AlertLevel == AlertLevel.严重).ToList();
@@ -409,5 +527,20 @@ public partial class FloatingViewModel : FloatingWidgetViewModelBase
         {
             InfoGroup = null;
         }
+    }
+
+    /// <summary>
+    /// 释放资源
+    /// </summary>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            // 取消任务队列事件订阅
+            _taskQueue.TaskCompleted -= OnTaskCompleted;
+            _taskQueue.TaskStarted -= OnTaskStarted;
+        }
+
+        base.Dispose(disposing);
     }
 }

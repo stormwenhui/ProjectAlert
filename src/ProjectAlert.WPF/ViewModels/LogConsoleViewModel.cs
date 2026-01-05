@@ -37,6 +37,8 @@ public partial class LogLevelFilter : ObservableObject
 public partial class LogConsoleViewModel : FloatingWidgetViewModelBase
 {
     private readonly LogService _logService;
+    private readonly System.Collections.Specialized.NotifyCollectionChangedEventHandler _collectionChangedHandler;
+    private readonly PropertyChangedEventHandler _filterPropertyChangedHandler;
 
     /// <summary>
     /// 日志列表视图
@@ -95,21 +97,27 @@ public partial class LogConsoleViewModel : FloatingWidgetViewModelBase
         LevelFilters.Add(new LogLevelFilter { Level = LogLevel.Warning, Name = "警告", IsChecked = true });
         LevelFilters.Add(new LogLevelFilter { Level = LogLevel.Error, Name = "错误", IsChecked = true });
 
+        // 使用命名委托以便后续取消订阅
+        _filterPropertyChangedHandler = (s, e) =>
+        {
+            if (e.PropertyName == nameof(LogLevelFilter.IsChecked))
+            {
+                LogsView.Refresh();
+                UpdateFilteredCount();
+            }
+        };
+
         foreach (var filter in LevelFilters)
         {
-            filter.PropertyChanged += (s, e) =>
-            {
-                if (e.PropertyName == nameof(LogLevelFilter.IsChecked))
-                {
-                    LogsView.Refresh();
-                    UpdateFilteredCount();
-                }
-            };
+            filter.PropertyChanged += _filterPropertyChangedHandler;
         }
 
         // 监听新日志
         _logService.LogAdded += OnLogAdded;
-        _logService.Logs.CollectionChanged += (s, e) => LogCount = _logService.Logs.Count;
+
+        // 监听集合变化
+        _collectionChangedHandler = (s, e) => LogCount = _logService.Logs.Count;
+        _logService.Logs.CollectionChanged += _collectionChangedHandler;
 
         LogCount = _logService.Logs.Count;
         UpdateFilteredCount();
@@ -209,5 +217,26 @@ public partial class LogConsoleViewModel : FloatingWidgetViewModelBase
         UpdateFilteredCount();
         LastUpdateTime = DateTime.Now;
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 释放资源
+    /// </summary>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            // 取消日志服务事件订阅
+            _logService.LogAdded -= OnLogAdded;
+            _logService.Logs.CollectionChanged -= _collectionChangedHandler;
+
+            // 取消筛选器事件订阅
+            foreach (var filter in LevelFilters)
+            {
+                filter.PropertyChanged -= _filterPropertyChangedHandler;
+            }
+        }
+
+        base.Dispose(disposing);
     }
 }

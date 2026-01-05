@@ -54,7 +54,7 @@ public class SchedulerService
     }
 
     /// <summary>
-    /// 重新加载所有规则
+    /// 重新加载所有规则（错开启动避免并发压力）
     /// </summary>
     public async Task ReloadRulesAsync()
     {
@@ -68,9 +68,14 @@ public class SchedulerService
         var alertRuleRepo = scope.ServiceProvider.GetRequiredService<IAlertRuleRepository>();
         var rules = await alertRuleRepo.GetEnabledAsync();
 
+        var random = new Random();
+        var delayOffset = 0;
+
         foreach (var rule in rules)
         {
-            await ScheduleRuleAsync(rule);
+            // 为每个规则添加随机延迟启动（500-2000ms 递增）
+            await ScheduleRuleAsync(rule, delayOffset);
+            delayOffset += random.Next(500, 2001);
         }
 
         _logService.Info("系统", $"已加载 {rules.Count()} 条预警规则");
@@ -79,7 +84,9 @@ public class SchedulerService
     /// <summary>
     /// 调度单个规则
     /// </summary>
-    public async Task ScheduleRuleAsync(AlertRule rule)
+    /// <param name="rule">预警规则</param>
+    /// <param name="delayMs">延迟启动毫秒数（默认0表示立即启动）</param>
+    public async Task ScheduleRuleAsync(AlertRule rule, int delayMs = 0)
     {
         if (_scheduler == null || !rule.Enabled) return;
 
@@ -97,10 +104,15 @@ public class SchedulerService
             .UsingJobData("RuleId", rule.Id)
             .Build();
 
+        // 根据延迟时间设置启动时间
+        var startTime = delayMs > 0
+            ? DateTimeOffset.Now.AddMilliseconds(delayMs)
+            : DateTimeOffset.Now;
+
         var trigger = TriggerBuilder.Create()
             .WithIdentity(triggerKey)
             .WithCronSchedule(rule.CronExpression)
-            .StartNow()
+            .StartAt(startTime)
             .Build();
 
         await _scheduler.ScheduleJob(job, trigger);

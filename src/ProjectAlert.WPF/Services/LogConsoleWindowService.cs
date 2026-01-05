@@ -171,27 +171,34 @@ public class LogConsoleWindowService
     /// </summary>
     private void DebounceSaveState()
     {
-        _saveDebounceTimer?.Stop();
-        _saveDebounceTimer = new DispatcherTimer
+        // 复用同一个 Timer，避免内存泄漏
+        if (_saveDebounceTimer == null)
         {
-            Interval = TimeSpan.FromMilliseconds(500)
-        };
-        _saveDebounceTimer.Tick += async (s, e) =>
-        {
-            _saveDebounceTimer?.Stop();
-            if (!_isSaving)
+            _saveDebounceTimer = new DispatcherTimer
             {
-                _isSaving = true;
-                try
+                Interval = TimeSpan.FromMilliseconds(500)
+            };
+            _saveDebounceTimer.Tick += async (s, e) =>
+            {
+                _saveDebounceTimer?.Stop();
+                if (!_isSaving)
                 {
-                    await SaveStateAsync();
+                    _isSaving = true;
+                    try
+                    {
+                        await SaveStateAsync();
+                    }
+                    finally
+                    {
+                        _isSaving = false;
+                    }
                 }
-                finally
-                {
-                    _isSaving = false;
-                }
-            }
-        };
+            };
+        }
+        else
+        {
+            _saveDebounceTimer.Stop();
+        }
         _saveDebounceTimer.Start();
     }
 }

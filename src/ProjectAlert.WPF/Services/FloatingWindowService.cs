@@ -15,8 +15,7 @@ public class FloatingWindowService
     private const string WindowId = "alert";
     private readonly IFloatingWindowStateRepository _stateRepository;
     private FloatingWidgetWindow? _floatingWindow;
-    private FloatingWidgetViewModelBase? _viewModel;
-    private DispatcherTimer? _refreshTimer;
+    private FloatingViewModel? _viewModel;
     private DispatcherTimer? _saveDebounceTimer;
     private bool _isSaving;
 
@@ -38,7 +37,7 @@ public class FloatingWindowService
     /// <summary>
     /// 初始化悬浮窗（延迟创建）
     /// </summary>
-    public async Task InitializeAsync(FloatingWidgetViewModelBase viewModel)
+    public async Task InitializeAsync(FloatingViewModel viewModel)
     {
         _viewModel = viewModel;
 
@@ -79,14 +78,14 @@ public class FloatingWindowService
         {
             VisibilityChanged?.Invoke(this, _floatingWindow.IsVisible);
 
-            // 窗口显示时启动定时刷新，隐藏时停止
+            // 窗口显示时通知 ViewModel 启动任务队列，隐藏时停止
             if (_floatingWindow.IsVisible)
             {
-                StartRefreshTimer();
+                _viewModel?.OnWindowShown();
             }
             else
             {
-                StopRefreshTimer();
+                _viewModel?.OnWindowHidden();
             }
 
             // 保存状态（可见性变化立即保存）
@@ -118,13 +117,14 @@ public class FloatingWindowService
     /// <summary>
     /// 显示悬浮窗
     /// </summary>
-    public async Task ShowAsync()
+    public Task ShowAsync()
     {
-        if (_floatingWindow == null || _viewModel == null) return;
+        if (_floatingWindow == null || _viewModel == null) return Task.CompletedTask;
 
         _floatingWindow.Show();
         _floatingWindow.Activate();
-        await _viewModel.RefreshAsync();
+        // 注：OnWindowShown 会在 IsVisibleChanged 事件中触发，自动请求刷新
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -174,61 +174,38 @@ public class FloatingWindowService
     }
 
     /// <summary>
-    /// 启动定时刷新
-    /// </summary>
-    private void StartRefreshTimer()
-    {
-        if (_refreshTimer != null) return;
-
-        _refreshTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(30)
-        };
-        _refreshTimer.Tick += async (s, e) =>
-        {
-            if (_viewModel != null)
-            {
-                await _viewModel.RefreshAsync();
-            }
-        };
-        _refreshTimer.Start();
-    }
-
-    /// <summary>
-    /// 停止定时刷新
-    /// </summary>
-    private void StopRefreshTimer()
-    {
-        _refreshTimer?.Stop();
-        _refreshTimer = null;
-    }
-
-    /// <summary>
     /// 防抖保存状态（延迟500ms执行，期间如有新请求则重新计时）
     /// </summary>
     private void DebounceSaveState()
     {
-        _saveDebounceTimer?.Stop();
-        _saveDebounceTimer = new DispatcherTimer
+        // 复用同一个 Timer，避免内存泄漏
+        if (_saveDebounceTimer == null)
         {
-            Interval = TimeSpan.FromMilliseconds(500)
-        };
-        _saveDebounceTimer.Tick += async (s, e) =>
-        {
-            _saveDebounceTimer?.Stop();
-            if (!_isSaving)
+            _saveDebounceTimer = new DispatcherTimer
             {
-                _isSaving = true;
-                try
+                Interval = TimeSpan.FromMilliseconds(500)
+            };
+            _saveDebounceTimer.Tick += async (s, e) =>
+            {
+                _saveDebounceTimer?.Stop();
+                if (!_isSaving)
                 {
-                    await SaveStateAsync();
+                    _isSaving = true;
+                    try
+                    {
+                        await SaveStateAsync();
+                    }
+                    finally
+                    {
+                        _isSaving = false;
+                    }
                 }
-                finally
-                {
-                    _isSaving = false;
-                }
-            }
-        };
+            };
+        }
+        else
+        {
+            _saveDebounceTimer.Stop();
+        }
         _saveDebounceTimer.Start();
     }
 }

@@ -16,9 +16,7 @@
         ResizeMode="CanResizeWithGrip"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
     <Border x:Name="OuterBorder" Background="#37474F" CornerRadius="12" BorderBrush="#455A64" BorderThickness="1" SizeChanged="OuterBorder_SizeChanged">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.3" Direction="270"/>
-        </Border.Effect>
+        <!-- 移除 DropShadowEffect 以减少渲染资源占用 -->
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>

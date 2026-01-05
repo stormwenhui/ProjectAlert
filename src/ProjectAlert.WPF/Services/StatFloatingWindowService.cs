@@ -1,9 +1,10 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Threading;
 using ProjectAlert.Domain.Entities;
 using ProjectAlert.Domain.Interfaces;
-using ProjectAlert.Repository;
 using ProjectAlert.WPF.Controls;
+using ProjectAlert.WPF.Services.TaskQueue;
 using ProjectAlert.WPF.ViewModels;
 
 namespace ProjectAlert.WPF.Services;
@@ -34,11 +35,6 @@ public class StatFloatingWindowInfo
     public bool IsVisible => Window?.IsVisible ?? false;
 
     /// <summary>
-    /// 刷新定时器
-    /// </summary>
-    public DispatcherTimer? RefreshTimer { get; set; }
-
-    /// <summary>
     /// 保存防抖定时器
     /// </summary>
     public DispatcherTimer? SaveDebounceTimer { get; set; }
@@ -47,6 +43,51 @@ public class StatFloatingWindowInfo
     /// 是否正在保存
     /// </summary>
     public bool IsSaving { get; set; }
+
+    // 事件处理程序引用（用于清理）
+    internal DependencyPropertyChangedEventHandler? IsVisibleChangedHandler { get; set; }
+    internal EventHandler? LocationChangedHandler { get; set; }
+    internal SizeChangedEventHandler? SizeChangedHandler { get; set; }
+    internal PropertyChangedEventHandler? PropertyChangedHandler { get; set; }
+
+    /// <summary>
+    /// 清理资源
+    /// </summary>
+    public void Cleanup()
+    {
+        // 停止定时器
+        if (SaveDebounceTimer != null)
+        {
+            SaveDebounceTimer.Stop();
+            SaveDebounceTimer = null;
+        }
+
+        // 取消窗口事件订阅
+        if (Window != null)
+        {
+            if (IsVisibleChangedHandler != null)
+                Window.IsVisibleChanged -= IsVisibleChangedHandler;
+            if (LocationChangedHandler != null)
+                Window.LocationChanged -= LocationChangedHandler;
+            if (SizeChangedHandler != null)
+                Window.SizeChanged -= SizeChangedHandler;
+        }
+
+        // 取消 ViewModel 事件订阅
+        if (ViewModel != null && PropertyChangedHandler != null)
+        {
+            ViewModel.PropertyChanged -= PropertyChangedHandler;
+        }
+
+        // 释放 ViewModel
+        ViewModel?.Dispose();
+        ViewModel = null;
+
+        IsVisibleChangedHandler = null;
+        LocationChangedHandler = null;
+        SizeChangedHandler = null;
+        PropertyChangedHandler = null;
+    }
 }
 
 /// <summary>
@@ -55,9 +96,9 @@ public class StatFloatingWindowInfo
 public class StatFloatingWindowService
 {
     private readonly IStatConfigRepository _statConfigRepository;
-    private readonly IDbConnectionRepository _dbConnectionRepository;
-    private readonly IDbConnectionFactory _dbConnectionFactory;
     private readonly IFloatingWindowStateRepository _stateRepository;
+    private readonly ITaskQueue _taskQueue;
+    private readonly LogService _logService;
     private readonly Dictionary<int, StatFloatingWindowInfo> _windows = new();
 
     /// <summary>
@@ -75,14 +116,14 @@ public class StatFloatingWindowService
     /// </summary>
     public StatFloatingWindowService(
         IStatConfigRepository statConfigRepository,
-        IDbConnectionRepository dbConnectionRepository,
-        IDbConnectionFactory dbConnectionFactory,
-        IFloatingWindowStateRepository stateRepository)
+        IFloatingWindowStateRepository stateRepository,
+        ITaskQueue taskQueue,
+        LogService logService)
     {
         _statConfigRepository = statConfigRepository;
-        _dbConnectionRepository = dbConnectionRepository;
-        _dbConnectionFactory = dbConnectionFactory;
         _stateRepository = stateRepository;
+        _taskQueue = taskQueue;
+        _logService = logService;
     }
 
     /// <summary>
@@ -112,7 +153,10 @@ public class StatFloatingWindowService
         {
             if (_windows.TryGetValue(id, out var info))
             {
-                info.RefreshTimer?.Stop();
+                // 通知 ViewModel 停止任务
+                info.ViewModel?.OnWindowHidden();
+                // 清理所有资源（事件、定时器、ViewModel）
+                info.Cleanup();
                 info.Window?.Close();
                 _windows.Remove(id);
                 // 删除保存的状态
@@ -138,7 +182,7 @@ public class StatFloatingWindowService
     }
 
     /// <summary>
-    /// 恢复所有之前显示的浮窗
+    /// 恢复所有之前显示的浮窗（错开启动避免并发压力）
     /// </summary>
     public async Task RestoreVisibleWindowsAsync()
     {
@@ -147,12 +191,20 @@ public class StatFloatingWindowService
             .Where(s => s.WindowId.StartsWith("stat_") && s.IsVisible)
             .ToList();
 
+        var random = new Random();
+        var delayOffset = 0;
+
         foreach (var state in visibleStatWindows)
         {
             var configIdStr = state.WindowId.Replace("stat_", "");
             if (int.TryParse(configIdStr, out var configId) && _windows.ContainsKey(configId))
             {
-                await ShowAsync(configId);
+                // 计算延迟时间
+                var initialDelay = delayOffset > 0 ? TimeSpan.FromMilliseconds(delayOffset) : (TimeSpan?)null;
+                await ShowAsync(configId, initialDelay);
+
+                // 累加延迟（500-2000毫秒）
+                delayOffset += random.Next(500, 2001);
             }
         }
     }
@@ -160,7 +212,9 @@ public class StatFloatingWindowService
     /// <summary>
     /// 显示指定统计的浮窗
     /// </summary>
-    public async Task ShowAsync(int configId)
+    /// <param name="configId">配置ID</param>
+    /// <param name="initialDelay">初始延迟（用于错开启动）</param>
+    public async Task ShowAsync(int configId, TimeSpan? initialDelay = null)
     {
         if (!_windows.TryGetValue(configId, out var info))
             return;
@@ -170,19 +224,12 @@ public class StatFloatingWindowService
             // 加载保存的状态
             var savedState = await _stateRepository.GetByIdAsync(GetWindowId(configId));
 
-            // 创建 ViewModel
-            var viewModel = new StatFloatingViewModel(_dbConnectionFactory);
+            // 创建 ViewModel（通过任务队列刷新数据）
+            var viewModel = new StatFloatingViewModel(_taskQueue, _logService);
             info.ViewModel = viewModel;
 
-            // 获取数据库连接
-            DbConnection? dbConnection = null;
-            if (info.Config.DbConnectionId.HasValue)
-            {
-                dbConnection = await _dbConnectionRepository.GetByIdAsync(info.Config.DbConnectionId.Value);
-            }
-
-            // 初始化 ViewModel
-            viewModel.Initialize(info.Config, dbConnection);
+            // 初始化 ViewModel（只传入配置）
+            viewModel.Initialize(info.Config);
 
             // 恢复 ViewModel 设置
             if (savedState != null)
@@ -218,30 +265,39 @@ public class StatFloatingWindowService
                 info.Window.Top = workArea.Bottom - info.Window.Height - 20 - (index / 3) * 50;
             }
 
-            // 监听窗口可见性变化
-            info.Window.IsVisibleChanged += (s, e) =>
+            // 保存初始延迟，用于可见性变化时
+            TimeSpan? capturedDelay = initialDelay;
+
+            // 创建并保存事件处理程序引用（用于后续清理）
+            info.IsVisibleChangedHandler = (s, e) =>
             {
                 VisibilityChanged?.Invoke(this, (configId, info.Window.IsVisible));
 
                 if (info.Window.IsVisible)
                 {
-                    StartRefreshTimer(info);
+                    // 通知 ViewModel 窗口显示，传入初始延迟
+                    info.ViewModel?.OnWindowShown(capturedDelay);
+                    // 只在第一次使用延迟，后续显示不需要延迟
+                    capturedDelay = null;
                 }
                 else
                 {
-                    StopRefreshTimer(info);
+                    info.ViewModel?.OnWindowHidden();
                 }
 
                 // 保存状态（可见性变化立即保存）
                 _ = SaveStateAsync(configId, info);
             };
+            info.Window.IsVisibleChanged += info.IsVisibleChangedHandler;
 
             // 监听窗口位置和大小变化（使用防抖）
-            info.Window.LocationChanged += (s, e) => DebounceSaveState(configId, info);
-            info.Window.SizeChanged += (s, e) => DebounceSaveState(configId, info);
+            info.LocationChangedHandler = (s, e) => DebounceSaveState(configId, info);
+            info.SizeChangedHandler = (s, e) => DebounceSaveState(configId, info);
+            info.Window.LocationChanged += info.LocationChangedHandler;
+            info.Window.SizeChanged += info.SizeChangedHandler;
 
             // 监听 ViewModel 属性变化
-            viewModel.PropertyChanged += (s, e) =>
+            info.PropertyChangedHandler = (s, e) =>
             {
                 if (e.PropertyName is nameof(viewModel.WindowOpacity)
                     or nameof(viewModel.IsLocked)
@@ -250,14 +306,12 @@ public class StatFloatingWindowService
                     DebounceSaveState(configId, info);
                 }
             };
+            viewModel.PropertyChanged += info.PropertyChangedHandler;
         }
 
         info.Window.Show();
         info.Window.Activate();
-        if (info.ViewModel != null)
-        {
-            await info.ViewModel.RefreshAsync();
-        }
+        // 注：OnWindowShown 会在 IsVisibleChanged 事件中触发，自动请求刷新
     }
 
     /// <summary>
@@ -290,13 +344,22 @@ public class StatFloatingWindowService
     }
 
     /// <summary>
-    /// 显示所有浮窗
+    /// 显示所有浮窗（错开启动避免并发压力）
     /// </summary>
     public async Task ShowAllAsync()
     {
-        foreach (var id in _windows.Keys.ToList())
+        var ids = _windows.Keys.ToList();
+        var random = new Random();
+        var delayOffset = 0;
+
+        foreach (var id in ids)
         {
-            await ShowAsync(id);
+            // 计算延迟时间
+            var initialDelay = delayOffset > 0 ? TimeSpan.FromMilliseconds(delayOffset) : (TimeSpan?)null;
+            await ShowAsync(id, initialDelay);
+
+            // 累加延迟（500-2000毫秒）
+            delayOffset += random.Next(500, 2001);
         }
     }
 
@@ -343,63 +406,38 @@ public class StatFloatingWindowService
     }
 
     /// <summary>
-    /// 启动定时刷新
-    /// </summary>
-    private void StartRefreshTimer(StatFloatingWindowInfo info)
-    {
-        if (info.RefreshTimer != null) return;
-
-        var interval = info.Config.RefreshInterval > 0 ? info.Config.RefreshInterval : 60;
-
-        info.RefreshTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(interval)
-        };
-        info.RefreshTimer.Tick += async (s, e) =>
-        {
-            if (info.ViewModel != null)
-            {
-                await info.ViewModel.RefreshAsync();
-            }
-        };
-        info.RefreshTimer.Start();
-    }
-
-    /// <summary>
-    /// 停止定时刷新
-    /// </summary>
-    private void StopRefreshTimer(StatFloatingWindowInfo info)
-    {
-        info.RefreshTimer?.Stop();
-        info.RefreshTimer = null;
-    }
-
-    /// <summary>
     /// 防抖保存状态（延迟500ms执行，期间如有新请求则重新计时）
     /// </summary>
     private void DebounceSaveState(int configId, StatFloatingWindowInfo info)
     {
-        info.SaveDebounceTimer?.Stop();
-        info.SaveDebounceTimer = new DispatcherTimer
+        // 复用同一个 Timer，避免内存泄漏
+        if (info.SaveDebounceTimer == null)
         {
-            Interval = TimeSpan.FromMilliseconds(500)
-        };
-        info.SaveDebounceTimer.Tick += async (s, e) =>
-        {
-            info.SaveDebounceTimer?.Stop();
-            if (!info.IsSaving)
+            info.SaveDebounceTimer = new DispatcherTimer
             {
-                info.IsSaving = true;
-                try
+                Interval = TimeSpan.FromMilliseconds(500)
+            };
+            info.SaveDebounceTimer.Tick += async (s, e) =>
+            {
+                info.SaveDebounceTimer?.Stop();
+                if (!info.IsSaving)
                 {
-                    await SaveStateAsync(configId, info);
+                    info.IsSaving = true;
+                    try
+                    {
+                        await SaveStateAsync(configId, info);
+                    }
+                    finally
+                    {
+                        info.IsSaving = false;
+                    }
                 }
-                finally
-                {
-                    info.IsSaving = false;
-                }
-            }
-        };
+            };
+        }
+        else
+        {
+            info.SaveDebounceTimer.Stop();
+        }
         info.SaveDebounceTimer.Start();
     }
 }

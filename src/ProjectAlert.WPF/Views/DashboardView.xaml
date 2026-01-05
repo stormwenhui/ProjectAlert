@@ -31,6 +31,8 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="BtnEditMode" Content="编辑浮窗" Margin="0,0,8,0" Click="BtnEditMode_Click"
+                                    Style="{StaticResource ButtonDefault}"/>
                             <Button Content="全部显示" Margin="0,0,8,0" Click="BtnShowAllFloating_Click"
                                     Style="{StaticResource ButtonPrimary}"/>
                             <Button Content="全部隐藏" Click="BtnHideAllFloating_Click"

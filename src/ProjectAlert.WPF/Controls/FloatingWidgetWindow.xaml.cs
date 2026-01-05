@@ -6,6 +6,8 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using ProjectAlert.WPF.Services;
 using ProjectAlert.WPF.ViewModels;
 
 namespace ProjectAlert.WPF.Controls;
@@ -30,6 +32,7 @@ public partial class FloatingWidgetWindow : Window
     private DispatcherTimer? _opacityPopupHideTimer;
     private TranslateTransform? _titleBarTransform;
     private bool _isTitleBarVisible = true;
+    private FloatingEditModeService? _editModeService;
 
     /// <summary>
     /// 是否显示状态栏
@@ -75,6 +78,47 @@ public partial class FloatingWidgetWindow : Window
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
+        Closed += OnWindowClosed;
+    }
+
+    /// <summary>
+    /// 窗口关闭时清理资源
+    /// </summary>
+    private void OnWindowClosed(object? sender, EventArgs e)
+    {
+        // 停止并清理定时器
+        if (_titleBarHideTimer != null)
+        {
+            _titleBarHideTimer.Stop();
+            _titleBarHideTimer = null;
+        }
+
+        if (_opacityPopupHideTimer != null)
+        {
+            _opacityPopupHideTimer.Stop();
+            _opacityPopupHideTimer = null;
+        }
+
+        // 取消编辑模式服务事件订阅
+        if (_editModeService != null)
+        {
+            _editModeService.EditModeChanged -= OnEditModeChanged;
+            _editModeService = null;
+        }
+
+        // 取消事件订阅
+        MouseEnter -= OnWindowMouseEnter;
+        MouseLeave -= OnWindowMouseLeave;
+        DataContextChanged -= OnDataContextChanged;
+        Loaded -= OnLoaded;
+        Closed -= OnWindowClosed;
+
+        // 取消 ViewModel 事件订阅
+        if (_viewModel != null)
+        {
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _viewModel = null;
+        }
     }
 
     /// <summary>
@@ -93,6 +137,15 @@ public partial class FloatingWidgetWindow : Window
     {
         // 获取标题栏TranslateTransform引用
         _titleBarTransform = FindName("TitleBarTransform") as TranslateTransform;
+
+        // 获取编辑模式服务并订阅事件
+        _editModeService = App.Services.GetService<FloatingEditModeService>();
+        if (_editModeService != null)
+        {
+            _editModeService.EditModeChanged += OnEditModeChanged;
+            // 初始状态应用
+            ApplyEditMode(_editModeService.IsEditMode);
+        }
 
         // 透明度按钮悬停事件
         if (FindName("BtnOpacity") is System.Windows.Controls.Button btnOpacity &&
@@ -135,14 +188,54 @@ public partial class FloatingWidgetWindow : Window
         _titleBarHideTimer.Start();
     }
 
+    /// <summary>
+    /// 编辑模式变化事件处理
+    /// </summary>
+    private void OnEditModeChanged(object? sender, bool isEditMode)
+    {
+        Dispatcher.Invoke(() => ApplyEditMode(isEditMode));
+    }
+
+    /// <summary>
+    /// 应用编辑模式状态
+    /// </summary>
+    private void ApplyEditMode(bool isEditMode)
+    {
+        if (isEditMode)
+        {
+            // 编辑模式：启用交互，显示标题栏
+            ShowTitleBar();
+            _titleBarHideTimer?.Stop();
+            // 根据锁定状态更新 ResizeMode
+            if (_viewModel != null)
+            {
+                UpdateResizeMode(_viewModel.IsLocked);
+            }
+        }
+        else
+        {
+            // 静态模式：隐藏标题栏，禁用交互
+            HideTitleBar();
+            _titleBarHideTimer?.Stop();
+            // 禁用调整大小
+            ResizeMode = ResizeMode.NoResize;
+        }
+    }
+
     private void OnWindowMouseEnter(object sender, MouseEventArgs e)
     {
+        // 非编辑模式下不响应鼠标进入
+        if (_editModeService?.IsEditMode != true) return;
+
         _titleBarHideTimer?.Stop();
         ShowTitleBar();
     }
 
     private void OnWindowMouseLeave(object sender, MouseEventArgs e)
     {
+        // 非编辑模式下不响应鼠标离开
+        if (_editModeService?.IsEditMode != true) return;
+
         // 鼠标离开后延迟隐藏标题栏
         _titleBarHideTimer?.Start();
     }
@@ -206,6 +299,13 @@ public partial class FloatingWidgetWindow : Window
     /// </summary>
     private void UpdateResizeMode(bool isLocked)
     {
+        // 非编辑模式下始终禁用调整大小
+        if (_editModeService?.IsEditMode != true)
+        {
+            ResizeMode = ResizeMode.NoResize;
+            return;
+        }
+
         ResizeMode = isLocked ? ResizeMode.NoResize : ResizeMode.CanResizeWithGrip;
     }
 
@@ -214,6 +314,9 @@ public partial class FloatingWidgetWindow : Window
     /// </summary>
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        // 非编辑模式下不允许拖动
+        if (_editModeService?.IsEditMode != true) return;
+
         // 如果已锁定，不允许拖动
         if (_viewModel?.IsLocked == true) return;
         if (e.ChangedButton == MouseButton.Left)

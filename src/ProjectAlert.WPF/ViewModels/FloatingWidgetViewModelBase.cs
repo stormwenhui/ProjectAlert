@@ -5,8 +5,10 @@ namespace ProjectAlert.WPF.ViewModels;
 /// <summary>
 /// 桌面浮窗小组件基类 ViewModel
 /// </summary>
-public abstract partial class FloatingWidgetViewModelBase : ObservableObject
+public abstract partial class FloatingWidgetViewModelBase : ObservableObject, IDisposable
 {
+    private bool _disposed;
+
     /// <summary>
     /// 窗口标题
     /// </summary>
@@ -65,5 +67,23 @@ public abstract partial class FloatingWidgetViewModelBase : ObservableObject
     partial void OnErrorMessageChanged(string? value)
     {
         OnPropertyChanged(nameof(HasError));
+    }
+
+    /// <summary>
+    /// 释放资源
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// 释放资源（子类可重写）
+    /// </summary>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        _disposed = true;
     }
 }

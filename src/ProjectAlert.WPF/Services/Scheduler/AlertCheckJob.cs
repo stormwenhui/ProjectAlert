@@ -53,14 +53,9 @@ public class AlertCheckJob : IJob
 
             var results = await executor.ExecuteAsync(rule);
 
-            // 收集当前活跃的预警Key
-            var activeKeys = new List<string?>();
-
             // 处理执行结果
             foreach (var result in results)
             {
-                activeKeys.Add(result.AlertKey);
-
                 // 检查是否被忽略
                 if (await ignoredAlertRepo.IsIgnoredAsync(rule.Id, result.AlertKey))
                     continue;
@@ -79,9 +74,6 @@ public class AlertCheckJob : IJob
                 };
                 await currentAlertRepo.UpsertAlertAsync(alert);
             }
-
-            // 移除已恢复的预警
-            await currentAlertRepo.RemoveRecoveredAlertsAsync(rule.Id, activeKeys);
 
             // 更新规则状态
             rule.LastRunTime = DateTime.Now;
